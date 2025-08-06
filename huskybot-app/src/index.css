@@ -1,0 +1,574 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* UConn Color Variables with Blue Accents */
+:root {
+  --uconn-navy: #000E2F;
+  --uconn-red: #E4002B;
+  --uconn-blue: #0066CC;
+  --uconn-light-blue: #4A90E2;
+  --uconn-navy-light: rgba(0, 14, 47, 0.8);
+  --uconn-navy-lighter: rgba(0, 14, 47, 0.6);
+  --uconn-red-light: rgba(228, 0, 43, 0.8);
+  --uconn-red-lighter: rgba(228, 0, 43, 0.6);
+  --uconn-blue-light: rgba(0, 102, 204, 0.8);
+  --uconn-blue-lighter: rgba(0, 102, 204, 0.6);
+}
+
+/* Global styles with enhanced text rendering */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #000E2F; /* Fallback background */
+  overflow: hidden; /* Prevent scrollbars from appearing */
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+/* Smooth moving cursor - VS Code smooth caret style */
+.typewriter-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.2em;
+  background: #ffffff;
+  margin-left: 1px;
+  animation: vscodeBlink 1s ease-in-out infinite;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  position: relative;
+  top: 0.1em;
+  border-radius: 1px;
+  transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Smooth cursor positioning for typewriter */
+.typewriter-text {
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
+  text-rendering: geometricPrecision;
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1, 'zero' 1;
+  font-variant-ligatures: common-ligatures contextual;
+  will-change: contents, transform;
+  transform: translateZ(0) translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+  contain: layout style paint;
+  isolation: isolate;
+  /* Ultra-high performance optimizations */
+  -webkit-transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  -webkit-perspective: 1000px;
+  /* Sub-pixel precision */
+  -webkit-font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
+  -moz-font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
+  /* Smooth transitions for opacity changes */
+  transition: none;
+  position: relative;
+  display: inline-block;
+  min-height: 1.2em;
+}
+
+.typewriter-text span {
+  display: inline;
+  will-change: opacity;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-font-smoothing: inherit;
+  text-rendering: inherit;
+  transition: opacity 0.05s ease-out;
+}
+
+/* New, Correct Typewriter Styles */
+.typewriter-measure {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+}
+
+.custom-smooth-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 1.2em;
+  background: var(--foreground);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 10;
+  transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  animation: vscodeBlink 1s infinite;
+}
+
+/* Custom Input with Smooth Caret */
+.custom-input-container {
+  position: relative;
+  cursor: text;
+  display: flex;
+  align-items: center;
+}
+
+.custom-input-editor {
+  caret-color: transparent; /* Hide the native caret */
+  outline: none;
+  white-space: pre; /* Or 'nowrap' if you don't want wrapping */
+}
+
+.custom-input-placeholder {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  left: 18px;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+
+/* Specific style for password input to mask text */
+.custom-input-editor.password {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
+
+/* Modern glassmorphic input styles with blue accents */
+.modern-input {
+  width: 100%;
+  padding: 14px 18px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: var(--input);
+  backdrop-filter: blur(15px);
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+  position: relative;
+}
+
+.modern-input::placeholder {
+  color: var(--muted-foreground);
+  transition: all 0.3s ease;
+}
+
+.modern-input:focus {
+  border-color: var(--ring);
+  background: var(--accent);
+  box-shadow: 
+    0 0 0 4px hsla(var(--ring) / 0.15),
+    0 8px 25px hsla(var(--ring) / 0.2);
+  transform: translateY(-1px);
+}
+
+.modern-input:focus::placeholder {
+  color: var(--accent-foreground);
+  transform: translateY(-2px);
+}
+
+.modern-input:hover:not(:focus) {
+  border-color: var(--ring);
+  background: var(--accent);
+  transform: translateY(-0.5px);
+  box-shadow: 0 4px 15px hsla(var(--ring) / 0.1);
+}
+
+.modern-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Modern glassmorphic button styles with mixed accents */
+.modern-button {
+  width: 100%;
+  padding: 14px 28px;
+  border-radius: 10px;
+  border: 2px solid var(--primary-foreground);
+  background: var(--primary);
+  backdrop-filter: blur(15px);
+  color: var(--primary-foreground);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.modern-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.modern-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--uconn-red), var(--primary));
+  border-color: var(--uconn-red);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 8px 25px rgba(228, 0, 43, 0.4),
+    0 4px 15px rgba(0, 102, 204, 0.2);
+}
+
+.modern-button:hover:not(:disabled)::before {
+  left: 100%;
+}
+
+.modern-button:active:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 15px rgba(228, 0, 43, 0.3),
+    0 2px 8px rgba(0, 102, 204, 0.2);
+}
+
+.modern-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  background: var(--muted);
+  border-color: var(--border);
+}
+
+/* Duo code display styles with blue accents */
+.duo-code {
+  font-family: 'Courier New', monospace;
+  font-size: 28px;
+  font-weight: bold;
+  text-align: center;
+  padding: 20px;
+  background: var(--accent);
+  border: 3px solid hsla(var(--ring) / 0.4);
+  border-radius: 12px;
+  color: var(--accent-foreground);
+  letter-spacing: 6px;
+  backdrop-filter: blur(15px);
+  box-shadow: 
+    0 8px 25px hsla(var(--ring) / 0.2),
+    inset 0 1px 0 hsla(0, 0%, 100%, 0.2);
+  animation: duoGlow 2s ease-in-out infinite alternate;
+}
+
+/* Enhanced animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes bluePulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1);
+    box-shadow: 0 0 0 rgba(0, 102, 204, 0);
+  }
+  25% {
+    opacity: 0.9;
+    transform: scale(1.1);
+    filter: brightness(1.3);
+    box-shadow: 0 0 8px rgba(0, 102, 204, 0.4);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.2);
+    filter: brightness(1.6);
+    box-shadow: 0 0 12px rgba(0, 102, 204, 0.6);
+  }
+  75% {
+    opacity: 0.9;
+    transform: scale(1.1);
+    filter: brightness(1.3);
+    box-shadow: 0 0 8px rgba(0, 102, 204, 0.4);
+  }
+}
+
+@keyframes smoothBlink {
+  0%, 45% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  50%, 95% {
+    opacity: 0.3;
+    transform: scaleY(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes cursorGlow {
+  0% {
+    box-shadow: 0 0 8px rgba(74, 144, 226, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 15px rgba(74, 144, 226, 0.8), 0 0 25px rgba(0, 102, 204, 0.4);
+  }
+}
+
+@keyframes slideInFromRight {
+  0% {
+    transform: translateX(100px) scale(0);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes progressSlide {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes duoGlow {
+  0% {
+    box-shadow: 
+      0 8px 25px rgba(74, 144, 226, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    border-color: rgba(74, 144, 226, 0.4);
+  }
+  100% {
+    box-shadow: 
+      0 12px 35px rgba(74, 144, 226, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3),
+      0 0 20px rgba(0, 102, 204, 0.3);
+    border-color: rgba(0, 102, 204, 0.6);
+  }
+}
+
+@keyframes buttonPulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Enhanced micro-interactions for buttons with blue accents */
+.enhanced-button {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.enhanced-button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(74, 144, 226, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.4s ease, height 0.4s ease;
+}
+
+.enhanced-button:active::after {
+  width: 300px;
+  height: 300px;
+}
+
+/* Loading spinner with blue accents */
+.uconn-spinner {
+  border: 3px solid rgba(74, 144, 226, 0.3);
+  border-top: 3px solid var(--uconn-blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Progress bar with blue and red gradient */
+.uconn-progress {
+  background: linear-gradient(90deg, var(--uconn-blue), var(--uconn-light-blue), var(--uconn-red));
+  animation: progressSlide 2s ease-in-out infinite;
+}
+
+@keyframes vscodeBlink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+
+
+@layer base {
+  :root {
+    --background: 240 2.2% 93.9%; /* Off-white like Facebook #F0F2F5 */
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%; /* Dark grey like Cursor #1E1E1E approximation */
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom smooth caret styles restored */
+.custom-smooth-caret {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 2px;
+  height: 1.2em; /* Restoring the height AGAIN */
+  background-color: hsl(var(--foreground));
+  border-radius: 1px;
+  pointer-events: none;
+  transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  animation: vscodeBlink 1s infinite;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+.typewriter-measure {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+}
+
+.custom-smooth-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 1.2em;
+  background: hsl(var(--foreground));
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 10;
+  transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  animation: vscodeBlink 1s infinite;
+}
+
+@keyframes vscodeBlink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}

@@ -1,0 +1,39 @@
+<!-- huskybot-app/extension/options.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>HuskyBot Options</title>
+  <style>
+    body { font-family: sans-serif; padding: 10px 20px; }
+    div { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    input { width: 400px; padding: 5px; }
+    button { padding: 10px 15px; cursor: pointer; }
+    #status { margin-top: 15px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>HuskyBot API Keys</h2>
+  <p>Your keys are stored securely on your local machine and are never shared.</p>
+  
+  <div>
+    <label for="openaiKey">OpenAI API Key:</label>
+    <input type="password" id="openaiKey">
+  </div>
+  
+  <div>
+    <label for="pineconeKey">Pinecone API Key:</label>
+    <input type="password" id="pineconeKey">
+  </div>
+
+  <div>
+    <label for="pineconeIndexUrl">Pinecone Index URL:</label>
+    <input type="text" id="pineconeIndexUrl" placeholder="e.g., https://your-index-xxxxxxx.svc.us-west1-gcp.pinecone.io">
+  </div>
+  
+  <button id="save">Save Keys</button>
+  <div id="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html> 

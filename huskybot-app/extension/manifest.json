@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "HuskyBot Scraper (Simple)",
+  "version": "1.1",
+  "description": "Scrapes a single HuskyCT page.",
+  "permissions": [
+    "scripting",
+    "storage"
+  ],
+  "options_page": "options.html",
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:*/*"
+    ]
+  },
+  "host_permissions": [
+    "https://huskyct.uconn.edu/ultra/courses/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+} 
