@@ -221,7 +221,7 @@ export const getAnnouncements = async (courseName: string): Promise<CourseAnnoun
 
         request.onerror = () => {
             console.error('Error fetching announcements:', request.error);
-      reject(request.error);
-    };
-  });
+            reject(request.error);
+        };
+    });
 }; 
