@@ -382,12 +382,13 @@ export default function CalendarView() {
                   <div key={e.id} className="mb-2 p-2 rounded border bg-card/40">
                     <div className="text-sm font-medium">• {e.title}</div>
                     {aiItem && (
-                      <div className="mt-1 text-xs text-muted-foreground">
+                      <div className="mt-1 text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                         {aiItem.type && (<span className="mr-2 inline-block px-1 py-0.5 rounded bg-accent/40 border">{aiItem.type}</span>)}
                         {aiItem.details && (<span>{aiItem.details}</span>)}
                         {aiItem.sourceLink && (
                           <a className="ml-2 underline" href={aiItem.sourceLink} target="_blank" rel="noreferrer">source</a>
                         )}
+                        <button className="modern-button" onClick={handleSummarize} style={{ padding: '4px 8px', width: 'auto' }}>{isSummarizing ? 'Summarizing…' : 'Study Summary'}</button>
                       </div>
                     )}
                     {!aiItem && (
