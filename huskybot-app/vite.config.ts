@@ -28,6 +28,16 @@ export default defineConfig({
           return p.replace(/^\/api\/hours/, "/hours");
         },
       },
+      "/textbookTopicSummary": {
+        target: process.env.VITE_PROXY_TARGET || "https://us-central1-huskybot-dabab.cloudfunctions.net",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/textbookTopicSummary/, "/textbookTopicSummary"),
+      },
+      "/getSignedPdfUrl": {
+        target: process.env.VITE_PROXY_TARGET || "https://us-central1-huskybot-dabab.cloudfunctions.net",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/getSignedPdfUrl/, "/getSignedPdfUrl"),
+      },
     },
   },
 })

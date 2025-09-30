@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getCourseMaterials, CourseData, CourseMaterial } from '../lib/idb';
 import { generateScheduleFromDocs, mergePlans, SchedulePlan, reconcileScheduleWithDocs, computeDocsHash } from '../lib/scheduler';
+import PdfViewer from './PdfViewer';
+import { summarizeTopicWithTextbook, getSignedPdfUrl, TopicSummaryResponse } from '../lib/textbookRetrieval';
 import { db } from '../firebase/config';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -89,6 +91,9 @@ export default function CalendarView() {
   const [planMessage, setPlanMessage] = useState<string>('');
   const [autoPlanned, setAutoPlanned] = useState<boolean>(false);
   const [authUid, setAuthUid] = useState<string | null>(null);
+  const [activeSummary, setActiveSummary] = useState<{ eventId: string; summary: string; sources: { heading?: string | null; pageStart?: number | null; pageEnd?: number | null; storagePath?: string | null }[] } | null>(null);
+  const [activePdf, setActivePdf] = useState<{ url: string } | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState<boolean>(false);
 
   useEffect(() => {
     let mounted = true;
@@ -354,24 +359,23 @@ export default function CalendarView() {
                 };
                 const handleSummarize = async () => {
                   try {
-                    const docs: Array<{ title: string; text?: string; base64?: string; mimeType?: string }> = [];
-                    if (meta && extensionId && meta.hasFile) {
-                      await new Promise<void>((resolve) => {
-                        chrome.runtime.sendMessage(extensionId, { type: 'READ_MATERIAL_FILE', id: meta.id }, (resp: any) => {
-                          const lastErr = chrome.runtime.lastError;
-                          if (!lastErr && resp?.success && resp.file?.data) {
-                            docs.push({ title: meta.title, base64: resp.file.data, mimeType: resp.file.mimeType || meta.mimeType });
-                          }
-                          resolve();
-                        });
-                      });
+                    setIsSummarizing(true);
+                    // Use event title directly; chapter-first retrieval handled server-side
+                    const resp: TopicSummaryResponse = await summarizeTopicWithTextbook(e.title);
+                    setActiveSummary({ eventId: e.id, summary: resp.summary, sources: resp.sources.map(s => ({ heading: s.heading, pageStart: s.pageStart || null, pageEnd: s.pageEnd || null, storagePath: s.storagePath || null })) });
+                    // Prefetch first source PDF URL for viewer
+                    const first = resp.sources.find(s => s.storagePath && s.pageStart && s.pageEnd);
+                    if (first?.storagePath) {
+                      try {
+                        const url = await getSignedPdfUrl(first.storagePath);
+                        setActivePdf({ url });
+                      } catch {}
                     }
-                    if (docs.length === 0) return;
-                    const plan = await generateScheduleFromDocs(docs, new Date().toISOString());
-                    console.log('[Calendar] Per-item summary plan:', plan);
-                    alert((plan.items?.[0]?.details || 'Summary ready - see console.') as string);
                   } catch (err) {
                     console.warn('[Calendar] Summarize failed', err);
+                    alert('Failed to generate study summary.');
+                  } finally {
+                    setIsSummarizing(false);
                   }
                 };
                 return (
@@ -386,17 +390,46 @@ export default function CalendarView() {
                         )}
                       </div>
                     )}
-                    {!aiItem && meta && (
+                    {!aiItem && (
                       <div className="mt-1 text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-                        {meta.courseName && <span>{meta.courseName}</span>}
-                        {meta.mimeType && <span>• {meta.mimeType}</span>}
-                        {typeof meta.size === 'number' && <span>• {meta.size} chars</span>}
-                        {canOpen && (
-                          <button className="modern-button" onClick={handleOpen} style={{ padding: '4px 8px', width: 'auto' }}>Open</button>
-                        )}
-                        {canOpen && (
-                          <button className="modern-button" onClick={handleSummarize} style={{ padding: '4px 8px', width: 'auto' }}>Summarize</button>
-                        )}
+                        <button className="modern-button" onClick={handleSummarize} style={{ padding: '4px 8px', width: 'auto' }}>{isSummarizing ? 'Summarizing…' : 'Study Summary'}</button>
+                      </div>
+                    )}
+
+                    {activeSummary?.eventId === e.id && (
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ minHeight: '400px' }}>
+                        <div className="p-2 rounded border overflow-auto" style={{ maxHeight: '70vh' }}>
+                          <div className="prose prose-sm max-w-none whitespace-pre-wrap">{activeSummary.summary}</div>
+                          <div className="mt-3 text-xs">
+                            <div className="font-semibold mb-1">Sources</div>
+                            {activeSummary.sources.map((s, idx) => (
+                              <div key={idx} className="mb-1">
+                                <span>[S{idx+1}] {s.heading || 'Section'} — pages {s.pageStart ?? '?'}–{s.pageEnd ?? '?'}</span>
+                                {s.storagePath && (
+                                  <button
+                                    className="modern-button ml-2"
+                                    onClick={async () => {
+                                      try {
+                                        const url = await getSignedPdfUrl(s.storagePath!);
+                                        setActivePdf({ url });
+                                      } catch {
+                                        alert('Failed to open PDF source.');
+                                      }
+                                    }}
+                                    style={{ padding: '2px 6px', width: 'auto' }}
+                                  >Open PDF</button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="p-0 rounded border overflow-hidden" style={{ height: '70vh' }}>
+                          {activePdf?.url ? (
+                            <PdfViewer url={activePdf.url} />
+                          ) : (
+                            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Select a source to view PDF</div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
