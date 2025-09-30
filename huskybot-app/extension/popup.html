@@ -4,7 +4,7 @@
 <head>
   <title>HuskyBot</title>
   <style>
-    body { font-family: sans-serif; width: 220px; padding: 10px; text-align: center; }
+    body { font-family: sans-serif; width: 220px; padding: 20px 10px; text-align: center; }
     button { width: 100%; padding: 10px; margin-top: 10px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; }
     #scrapeBtn { background-color: #4285F4; color: white; border: none; }
   </style>
@@ -12,7 +12,9 @@
 <body>
   <h3>HuskyBot Control</h3>
   <button id="scrapeBtn">Scrape Current Page</button>
-  <button id="showDataBtn">Show Saved Data (in console)</button>
+  <button id="openSiteBtn">Open HuskyBot Site</button>
+  <button id="showDataBtn">Show Saved Data</button>
+  <div id="materials" style="margin-top:10px; max-height:420px; overflow:auto; text-align:left;"></div>
   <script src="popup.js"></script>
 </body>
 </html> 

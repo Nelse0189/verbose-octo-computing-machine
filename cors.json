@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["http://localhost:5173","http://127.0.0.1:5173","http://localhost:3000","https://huskybot-dabab.web.app","https://huskybot-dabab.firebaseapp.com"],
+    "method": ["GET","POST","PUT","HEAD","DELETE","OPTIONS"],
+    "responseHeader": ["Authorization","Content-Type","x-goog-resumable","x-goog-meta-*"] ,
+    "maxAgeSeconds": 3600
+  }
+]

@@ -1,11 +1,15 @@
+
 {
   "manifest_version": 3,
   "name": "HuskyBot Scraper (Simple)",
-  "version": "1.1",
+  "version": "1.2",
   "description": "Scrapes a single HuskyCT page.",
   "permissions": [
     "scripting",
-    "storage"
+    "storage",
+    "tabs",
+    "activeTab",
+    "downloads"
   ],
   "options_page": "options.html",
   "externally_connectable": {
@@ -14,7 +18,21 @@
     ]
   },
   "host_permissions": [
-    "https://huskyct.uconn.edu/ultra/courses/*"
+    "https://huskyct.uconn.edu/ultra/courses/*",
+    "https://*.blackboard.com/*",
+    "https://learn.uconn.edu/*",
+    "https://lms.uconn.edu/*",
+    "https://*.blackboardcdn.com/*",
+    "https://*.ally.ac/*"
+  ],
+  "optional_host_permissions": [
+    "http://localhost:5173/*",
+    "https://huskyct.uconn.edu/*",
+    "https://learn.uconn.edu/*",
+    "https://lms.uconn.edu/*",
+    "https://*.blackboard.com/*",
+    "https://*.blackboardcdn.com/*",
+    "https://*.ally.ac/*"
   ],
   "background": {
     "service_worker": "background.js"

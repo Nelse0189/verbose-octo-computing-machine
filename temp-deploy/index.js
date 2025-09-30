@@ -91,7 +91,7 @@ exports.indexAnnouncement = onRequest(
       await pineconeIndex.upsert([{
         id: announcementId.toString(),
         values: vector,
-        metadata: { courseName, title, date, summary },
+        metadata: { courseName, title, date, summary: summary }, // Ensure summary text is stored
       }]);
       logger.info(`Upserted vector to Pinecone for ID ${announcementId}`);
 

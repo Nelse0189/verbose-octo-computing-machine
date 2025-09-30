@@ -1,10 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 import logo from './assets/logo.png';
+import logoDark from './assets/logo_dark.png';
+import { useTheme } from './contexts/ThemeProvider';
 import CustomInput from './components/CustomInput';
 import AuthModal from './components/AuthModal';
 import ChatBot from './components/ChatBot';
 import DiningHallMenu from './components/Menu';
+import CalendarView from './components/CalendarView';
+import SavedDataView from './components/SavedDataView';
 import { useAuth } from './contexts/AuthContext';
 import { Button } from './components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from './components/ui/sheet';
@@ -13,6 +17,7 @@ import { ThemeToggle } from './components/ThemeToggle';
 import './App.css';
 
 const WEBSOCKET_URL = 'ws://localhost:8080';
+const WS_ENABLED = (import.meta as any).env?.VITE_WS_ENABLED === 'true';
 
 // Sidebar component
 const Sidebar = ({
@@ -20,6 +25,8 @@ const Sidebar = ({
   onOpenMenu,
   onLogout,
   onShowAuthModal,
+  onOpenCalendar,
+  onOpenSaved,
   currentUser,
   connectionStatus,
   readyState,
@@ -28,13 +35,17 @@ const Sidebar = ({
   onOpenMenu: () => void;
   onLogout: () => void;
   onShowAuthModal: () => void;
+  onOpenCalendar: () => void;
+  onOpenSaved: () => void;
   currentUser: any;
   connectionStatus: string;
   readyState: ReadyState;
 }) => {
+  const { theme } = useTheme();
   const [isOpen, setIsOpen] = useState(false); // Internal state for the sheet
-  const { sendJsonMessage } = useWebSocket(WEBSOCKET_URL, {
+  const { sendJsonMessage } = useWebSocket(WS_ENABLED ? WEBSOCKET_URL : null, {
     share: true,
+    shouldReconnect: () => WS_ENABLED,
   });
 
   const handleScrapeClubs = () => {
@@ -48,6 +59,8 @@ const Sidebar = ({
   const handleOpenMenu = () => { onOpenMenu(); setIsOpen(false); };
   const handleLogout = () => { onLogout(); setIsOpen(false); };
   const handleShowAuthModal = () => { onShowAuthModal(); setIsOpen(false); };
+  const handleOpenCalendar = () => { onOpenCalendar(); setIsOpen(false); };
+  const handleOpenSaved = () => { onOpenSaved(); setIsOpen(false); };
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -57,7 +70,7 @@ const Sidebar = ({
           className="fixed top-5 left-5 h-auto p-0 bg-transparent z-[1000]"
         >
           <img
-            src={logo}
+            src={theme === 'light' ? logoDark : logo}
             alt="HuskyBot Logo"
             className="h-14 w-auto block rounded-lg"
           />
@@ -72,7 +85,8 @@ const Sidebar = ({
           <Button variant="outline" onClick={handleOpenChat}>Chat with AI</Button>
           <Button variant="outline" onClick={handleOpenMenu}>Dining Hall Menu</Button>
           <Button variant="outline">Dashboard</Button>
-          <Button variant="outline">Calendar</Button>
+          <Button variant="outline" onClick={handleOpenCalendar}>Calendar</Button>
+          <Button variant="outline" onClick={handleOpenSaved}>Saved Data</Button>
         </div>
         <SheetFooter className="mt-auto">
           <div className="w-full">
@@ -166,8 +180,8 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   
   // WebSocket connection
-  const { sendJsonMessage, lastJsonMessage, readyState } = useWebSocket(WEBSOCKET_URL, {
-    shouldReconnect: () => true,
+  const { sendJsonMessage, lastJsonMessage, readyState } = useWebSocket(WS_ENABLED ? WEBSOCKET_URL : null, {
+    shouldReconnect: () => WS_ENABLED,
     share: true,
   });
 
@@ -200,7 +214,7 @@ function App() {
   const measureRef = useRef<HTMLSpanElement>(null);
 
   // New state to manage which view is active
-  const [activeView, setActiveView] = useState('intro'); // 'intro', 'login', 'chat', 'menu'
+  const [activeView, setActiveView] = useState('intro'); // 'intro', 'login', 'chat', 'menu', 'calendar', 'saved'
 
   useEffect(() => {
     // This effect now correctly handles the initial state
@@ -306,13 +320,15 @@ function App() {
     };
   }, [isTyping, message]);
   
-  const connectionStatus = {
-    [ReadyState.CONNECTING]: 'Connecting',
-    [ReadyState.OPEN]: 'Connected to server',
-    [ReadyState.CLOSING]: 'Closing',
-    [ReadyState.CLOSED]: 'Disconnected from server',
-    [ReadyState.UNINSTANTIATED]: 'Uninstantiated',
-  }[readyState];
+  const connectionStatus = WS_ENABLED
+    ? ({
+        [ReadyState.CONNECTING]: 'Connecting',
+        [ReadyState.OPEN]: 'Connected to server',
+        [ReadyState.CLOSING]: 'Closing',
+        [ReadyState.CLOSED]: 'Disconnected from server',
+        [ReadyState.UNINSTANTIATED]: 'Uninstantiated',
+      } as Record<ReadyState, string>)[readyState]
+    : 'Offline';
 
   useEffect(() => {
     if (lastJsonMessage) {
@@ -382,6 +398,29 @@ function App() {
     initDB(); // Initialize the DB when the app loads
   }, []);
 
+  // If the extension id is already known, drop user into Saved view automatically
+  useEffect(() => {
+    try {
+      const extId = localStorage.getItem('huskybot_extension_id');
+      if (extId) setActiveView('saved');
+    } catch {}
+  }, []);
+
+  // Parse URL params e.g. ?ext=<extensionId> and auto-open Saved view
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const ext = params.get('ext');
+      const view = params.get('view');
+      if (ext) {
+        localStorage.setItem('huskybot_extension_id', ext);
+        setActiveView('saved');
+      } else if (view === 'saved') {
+        setActiveView('saved');
+      }
+    } catch {}
+  }, []);
+
   const handleScrape = async () => {
     setIsLoading(true);
     setScrapedData(null);
@@ -411,11 +450,20 @@ function App() {
 
   // Function to handle opening the chat
   const handleOpenChat = () => {
-    setShowChatBot(true);
+    setActiveView('chat');
+    setShowChatBot(false);
   };
 
   const handleOpenMenu = () => {
     setActiveView('menu');
+  };
+
+  const handleOpenCalendar = () => {
+    setActiveView('calendar');
+  };
+
+  const handleOpenSaved = () => {
+    setActiveView('saved');
   };
 
   const handleLogout = async () => {
@@ -434,7 +482,7 @@ function App() {
     const baseClasses = "w-full flex flex-col transition-transform duration-600 ease-[cubic-bezier(0.34,1.56,0.64,1)] p-6 rounded-2xl";
     const visibleClass = isMainComponentVisible ? 'scale-100' : 'scale-0';
 
-    if (view === 'menu') {
+    if (view === 'menu' || view === 'saved' || view === 'calendar') {
       return `${baseClasses} ${visibleClass} max-w-[95vw] bg-transparent border-none shadow-none p-0 gap-0`;
     }
 
@@ -450,7 +498,7 @@ function App() {
     switch (activeView) {
       case 'intro':
         return (
-          <>
+          <div className="w-full pb-24 space-y-4">
             {/* Hero Section */}
             <div className={`opacity-0 transition-opacity duration-800 ease-in-out delay-200 mt-10 ${isTextVisible ? 'opacity-100' : ''}`}>
               <h1 className="text-4xl font-extrabold m-0 mb-2 tracking-tighter leading-tight bg-gradient-to-r from-foreground to-foreground/80 text-transparent bg-clip-text">
@@ -542,16 +590,7 @@ function App() {
                 HuskyBot only accesses your course information to provide you with a better academic experience.
               </p>
             </div>
-
-            {/* Get Started Button */}
-            <button
-              onClick={() => setActiveView('login')}
-              className={`py-3 px-6 rounded-lg bg-gradient-to-r from-blue-600/80 to-blue-700/90 border-2 border-blue-600/60 text-white text-sm font-semibold cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-[0_8px_25px_rgba(74,144,226,0.3)] opacity-0 translate-y-2.5 hover:-translate-y-0.5 hover:shadow-[0_12px_35px_rgba(74,144,226,0.4)] ${isTextVisible ? 'opacity-100 translate-y-0' : ''}`}
-              style={{ transitionProperty: 'all, opacity, transform', transitionDelay: '1s' }}
-            >
-              Get Started with HuskyBot
-            </button>
-          </>
+          </div>
         );
       case 'login':
         return (
@@ -645,13 +684,25 @@ function App() {
             <DiningHallMenu />
           </div>
         );
+      case 'calendar':
+        return (
+          <div className={`p-4 rounded-2xl bg-card/50 border border-border mt-6 w-full opacity-0 transition-opacity duration-800 ease-in-out delay-600 ${isTextVisible ? 'opacity-100' : ''}`}>
+            <CalendarView />
+          </div>
+        );
+      case 'saved':
+        return (
+          <div className={`p-4 rounded-2xl bg-card/50 border border-border mt-6 w-full opacity-0 transition-opacity duration-800 ease-in-out delay-600 ${isTextVisible ? 'opacity-100' : ''}`}>
+            <SavedDataView />
+          </div>
+        );
       default:
         return null;
     }
   };
 
   return (
-    <div className="App bg-background">
+    <div className="App bg-card" style={{ minHeight: '100vh' }}>
        <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1001 }}>
         <ThemeToggle />
       </div>
@@ -660,6 +711,8 @@ function App() {
       <Sidebar 
         onOpenChat={handleOpenChat}
         onOpenMenu={handleOpenMenu}
+        onOpenCalendar={handleOpenCalendar}
+        onOpenSaved={handleOpenSaved}
         onLogout={handleLogout}
         onShowAuthModal={handleShowAuthModal}
         currentUser={currentUser}
@@ -667,54 +720,29 @@ function App() {
         readyState={readyState}
       />
 
-      {/* ChatBot Modal */}
-      {showChatBot && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000,
-          padding: '20px'
-        }}>
-          <div style={{
-            position: 'relative',
-            width: '100%',
-            maxWidth: '700px',
-            height: '600px'
-          }}>
+      {/* Main Content Area */}
+      {activeView === 'chat' ? (
+        <ChatBot />
+      ) : (
+        <>
+      <header className="App-header">
+            <div className="flex flex-col items-center justify-center min-h-screen text-foreground p-5 text-center">
+              <div className={getContainerStyle(activeView)}>
+                {renderContent()}
+              </div>
+            </div>
+          </header>
+          
+          {activeView === 'intro' && (
             <button
-              onClick={() => setShowChatBot(false)}
-              style={{
-                position: 'absolute',
-                top: '-40px',
-                right: '0',
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                color: 'white',
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '18px',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                backdropFilter: 'blur(10px)',
-                zIndex: 2001
-              }}
+              onClick={() => setActiveView('login')}
+              className={`fixed bottom-10 left-1/2 -translate-x-1/2 py-3 px-6 rounded-lg bg-gradient-to-r from-blue-600/80 to-blue-700/90 border-2 border-blue-600/60 text-white text-sm font-semibold cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-[0_8px_25px_rgba(74,144,226,0.3)] opacity-0 translate-y-2.5 hover:-translate-y-0.5 hover:shadow-[0_12px_35px_rgba(74,144,226,0.4)] ${isTextVisible ? 'opacity-100 translate-y-0' : ''}`}
+              style={{ transitionProperty: 'all, opacity, transform', transitionDelay: '1s' }}
             >
-              ×
+              Get Started with HuskyBot
             </button>
-            <ChatBot />
-          </div>
-        </div>
+          )}
+        </>
       )}
 
       {/* Version text in bottom left corner */}
@@ -724,14 +752,6 @@ function App() {
         HuskyBot v1.0
       </div>
 
-      <header className="App-header">
-        <div className="flex flex-col items-center justify-center min-h-screen text-foreground p-5 text-center">
-          <div className={getContainerStyle(activeView)}>
-            {renderContent()}
-          </div>
-        </div>
-      </header>
-      
       {/* Authentication Modal */}
       <AuthModal 
         isOpen={showAuthModal} 

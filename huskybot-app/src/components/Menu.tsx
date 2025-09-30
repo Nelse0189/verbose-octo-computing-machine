@@ -59,24 +59,45 @@ const DiningHallMenu: React.FC = () => {
       setHoursData(null);
 
       try {
+        const isDev = import.meta.env.DEV;
+        const MENU_ENDPOINT = isDev
+          ? '/api/menu'
+          : (import.meta.env.VITE_MENU_ENDPOINT || 'http://localhost:8080/api/menu');
+        const HOURS_ENDPOINT_BASE = isDev
+          ? '/api/hours'
+          : (import.meta.env.VITE_HOURS_ENDPOINT_BASE || 'http://localhost:8080/api/hours');
         // Fetch Menu
-        const menuResponse = await fetch('http://localhost:8080/api/menu', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            diningHall: selectedHall,
-            date: selectedDate.toISOString(),
-          }),
-        });
+        let menuResponse;
+        if (isDev) {
+          const qs = new URLSearchParams({ diningHall: selectedHall, date: selectedDate.toISOString() });
+          menuResponse = await fetch(`${MENU_ENDPOINT}?${qs.toString()}`, {
+            method: 'GET',
+          });
+        } else {
+          menuResponse = await fetch(MENU_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              diningHall: selectedHall,
+              date: selectedDate.toISOString(),
+            }),
+          });
+        }
         if (!menuResponse.ok) {
-          const errorData = await menuResponse.json();
-          throw new Error(errorData.error || 'Failed to fetch menu');
+          const errorText = await menuResponse.text();
+          try {
+            const errorData = JSON.parse(errorText);
+            throw new Error(errorData.error || 'Failed to fetch menu');
+          } catch {
+            throw new Error(errorText || 'Failed to fetch menu');
+          }
         }
         const menu: MenuData = await menuResponse.json();
         setMenuData(menu);
 
-        // Fetch Hours
-        const hoursResponse = await fetch(`http://localhost:8080/api/hours/${selectedHall}`);
+        // Fetch Hours (always use query param form to avoid path parsing issues on CF)
+        const hoursQs = new URLSearchParams({ diningHall: selectedHall });
+        const hoursResponse = await fetch(`${HOURS_ENDPOINT_BASE}?${hoursQs.toString()}`);
         if (!hoursResponse.ok) throw new Error('Failed to fetch hours');
         const hours: DiningHallHours = await hoursResponse.json();
         setHoursData(hours);

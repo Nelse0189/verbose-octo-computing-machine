@@ -1,144 +1,195 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useLayoutEffect } from 'react';
 
 interface CustomInputProps {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
-  type?: 'text' | 'password'; // Add type prop
-  onEnterPress?: () => void; // New prop for Enter key press
+  type?: 'text' | 'password';
+  onEnterPress?: () => void;
+  autoFocus?: boolean;
 }
 
-const CustomInput: React.FC<CustomInputProps> = ({ value, onChange, placeholder, type = 'text', onEnterPress }) => {
-  const [caretLeft, setCaretLeft] = useState(18);
-  const [isFocused, setIsFocused] = useState(false);
-  const [isBlinking, setIsBlinking] = useState(true);
-  const editorRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const typingTimeoutRef = useRef<number | null>(null);
-  const lastValue = useRef(value);
+export interface CustomInputRef {
+  focus: () => void;
+}
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault(); // Prevent new line
-      if (onEnterPress) {
+const CustomInput = forwardRef<CustomInputRef, CustomInputProps>(
+  ({ value, onChange, placeholder, type = 'text', onEnterPress, autoFocus = false }, ref) => {
+    const inputRef = useRef<HTMLInputElement>(null);
+    const measureRef = useRef<HTMLSpanElement>(null);
+    const [cursorX, setCursorX] = useState<number>(0); // target x
+    const [animatedX, setAnimatedX] = useState<number>(0); // smoothed x
+    const rafRef = useRef<number | null>(null);
+    const [isFocused, setIsFocused] = useState<boolean>(false);
+    const [isTyping, setIsTyping] = useState<boolean>(false);
+    const typingTimerRef = useRef<number | null>(null);
+
+    useImperativeHandle(ref, () => ({
+      focus: () => {
+        inputRef.current?.focus();
+      }
+    }));
+
+    useEffect(() => {
+      if (autoFocus && inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, [autoFocus]);
+
+    const updateCaret = () => {
+      const input = inputRef.current;
+      const measure = measureRef.current;
+      if (!input || !measure) return;
+
+      const liveValue = input.value;
+      const selectionEnd = input.selectionEnd ?? liveValue.length;
+      const textToMeasure = (type === 'password')
+        ? '*'.repeat(selectionEnd)
+        : liveValue.slice(0, selectionEnd);
+
+      const safe = textToMeasure.replace(/ /g, '\u00A0');
+      measure.textContent = safe;
+      const width = measure.offsetWidth;
+      setCursorX(width);
+    };
+
+    // Smoothly animate animatedX toward cursorX
+    const tick = () => {
+      const lerpFactor = 0.25; // higher = faster tracking
+      setAnimatedX(prev => {
+        const next = prev + (cursorX - prev) * lerpFactor;
+        return Math.abs(next - cursorX) < 0.25 ? cursorX : next;
+      });
+      // Continue if not very close
+      rafRef.current = Math.abs(animatedX - cursorX) < 0.25 ? null : requestAnimationFrame(tick);
+    };
+
+    // Start/refresh animation when target changes or focus state changes
+    useEffect(() => {
+      if (!isFocused) return;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(tick);
+      return () => {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cursorX, isFocused]);
+
+    // Recalculate immediately after React paints
+    useLayoutEffect(() => {
+      updateCaret();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [value, type, isFocused]);
+
+    useEffect(() => {
+      const onResize = () => updateCaret();
+      window.addEventListener('resize', onResize);
+      return () => window.removeEventListener('resize', onResize);
+    }, []);
+
+    const startTypingWindow = () => {
+      setIsTyping(true);
+      if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = window.setTimeout(() => setIsTyping(false), 250);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter' && onEnterPress) {
+        e.preventDefault();
         onEnterPress();
       }
-    }
-  };
+      startTypingWindow();
+      updateCaret();
+    };
+    
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      onChange(e.target.value);
+      startTypingWindow();
+      updateCaret();
+    };
 
-  const updateCaretPosition = () => {
-    const selection = window.getSelection();
-    const editorNode = editorRef.current;
-    const containerNode = containerRef.current;
+    const handleSelect = () => {
+      updateCaret();
+    };
 
-    if (!selection || selection.rangeCount === 0 || !editorNode || !containerNode) return;
+    const handleInput = () => {
+      startTypingWindow();
+      updateCaret();
+    };
 
-    const range = selection.getRangeAt(0);
-    if (!editorNode.contains(range.commonAncestorContainer)) return;
+    const handleCompositionUpdate = () => {
+      startTypingWindow();
+      updateCaret();
+    };
 
-    const containerRect = containerNode.getBoundingClientRect();
-    let rect;
+    const handleFocus = () => {
+      setIsFocused(true);
+      updateCaret();
+    };
 
-    if (range.collapsed) {
-      const rects = range.getClientRects();
-      if (rects.length > 0) {
-        rect = rects[0];
-      }
-    }
+    const handleBlur = () => {
+      setIsFocused(false);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    };
 
-    if (rect) {
-      // Correctly calculate left relative to the container, not the inner div
-      const newLeft = rect.left - containerRect.left;
-      if (newLeft !== caretLeft) {
-        setCaretLeft(newLeft);
-      }
-    } else if (editorNode.textContent === '') {
-      const newLeft = 18; // Default left padding
-      if (newLeft !== caretLeft) {
-        setCaretLeft(newLeft);
-      }
-    }
-  };
-
-  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
-    // Stop blinking when typing starts
-    setIsBlinking(false);
-
-    // Clear previous timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    // Set a new timeout to resume blinking after a pause
-    typingTimeoutRef.current = window.setTimeout(() => {
-      setIsBlinking(true);
-    }, 500); // Resume blinking after 500ms of inactivity
-
-    const newValue = e.currentTarget.textContent || '';
-    lastValue.current = newValue;
-    onChange(newValue);
-  };
-
-  useEffect(() => {
-    if (editorRef.current && value !== lastValue.current) {
-      editorRef.current.textContent = value;
-      lastValue.current = value;
-    }
-  }, [value]);
-
-  useLayoutEffect(() => {
-    if (isFocused) {
-      updateCaretPosition();
-    }
-  }, [value, isFocused]);
-  
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    }
-  }, []);
-
-  return (
-    <div 
-        ref={containerRef}
-        className="custom-input-container modern-input"
-        onClick={() => editorRef.current?.focus()}
-    >
-      <div 
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        className={`custom-input-editor ${type === 'password' ? 'password' : ''}`} // Conditionally apply class
-        onInput={handleInput}
-        onKeyUp={updateCaretPosition}
-        onClick={updateCaretPosition}
-        onFocus={() => {
-          setIsFocused(true);
-          setIsBlinking(true);
-        }}
-        onBlur={() => {
-          setIsFocused(false);
-          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        }}
-        onKeyDown={handleKeyDown} // Add key down handler
-      />
-      {!value && <span className="custom-input-placeholder">{placeholder}</span>}
-
-      {isFocused && (
-        <span 
-          className="custom-smooth-caret"
+    return (
+      <div className="custom-input-container modern-input" style={{ flex: 1, position: 'relative' }}>
+        {/* Hidden measurement span to compute caret x */}
+        <span
+          ref={measureRef}
+          className="typewriter-measure"
           style={{
-            transform: `translate(${caretLeft}px, -50%)`,
-            animation: isBlinking ? 'vscodeBlink 1s infinite' : 'none',
-            opacity: isBlinking ? undefined : 1,
+            font: 'inherit',
+            letterSpacing: 'inherit',
+            whiteSpace: 'pre',
+            visibility: 'hidden',
           }}
         />
-      )}
-    </div>
-  );
-};
+        {/* Custom smooth caret overlay - only show when focused */}
+        {isFocused && (
+          <div
+            className="custom-smooth-caret"
+            style={{
+              transform: `translateX(${Math.max(0, animatedX + 18)}px) translateY(-50%)`,
+              animation: isTyping ? 'none' : undefined,
+              transition: 'transform 0ms', // animation handled by RAF lerp
+            }}
+          />
+        )}
+        <input
+          ref={inputRef}
+          type={type}
+          value={value}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onSelect={handleSelect}
+          onInput={handleInput}
+          onCompositionUpdate={handleCompositionUpdate}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholder={placeholder}
+          className="custom-input-editor"
+          autoFocus={autoFocus}
+          style={{
+            width: '100%',
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            color: 'inherit',
+            fontSize: 'inherit',
+            fontFamily: 'inherit',
+            padding: 0,
+            margin: 0,
+            caretColor: 'transparent',
+          }}
+        />
+      </div>
+    );
+  }
+);
+
+CustomInput.displayName = 'CustomInput';
 
 export default CustomInput; 

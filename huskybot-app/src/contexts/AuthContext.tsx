@@ -34,6 +34,31 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+const EXTENSION_ID = import.meta.env.VITE_EXTENSION_ID as string | undefined;
+
+function pushUidToExtension(userId: string) {
+  try {
+    const chromeApi = (window as any).chrome;
+    if (!chromeApi?.runtime?.sendMessage) return;
+    if (!EXTENSION_ID) return;
+
+    chromeApi.runtime.sendMessage(EXTENSION_ID, { type: 'SET_USER', userId }, (res: any) => {
+      const lastError = chromeApi.runtime?.lastError;
+      if (lastError) {
+        console.warn('[Auth] Failed to push uid to extension:', lastError.message);
+        return;
+      }
+      if (res?.success) {
+        console.log('[Auth] Pushed uid to extension');
+      } else {
+        console.warn('[Auth] Extension responded with failure', res);
+      }
+    });
+  } catch (e) {
+    console.warn('[Auth] Exception when pushing uid to extension:', e);
+  }
+}
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,14 +68,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (displayName) {
       await updateProfile(user, { displayName });
     }
+    // onAuthStateChanged will handle propagation
   };
 
   const login = async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
+    // onAuthStateChanged will handle propagation
   };
 
   const logout = async () => {
     await signOut(auth);
+    try {
+      localStorage.removeItem('huskybotUserId');
+    } catch {}
   };
 
   const resetPassword = async (email: string) => {
@@ -67,6 +97,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setLoading(false);
+
+      if (user) {
+        // Store uid for frontend namespace
+        try { localStorage.setItem('huskybotUserId', user.uid); } catch {}
+        // Push uid to extension for indexing namespace
+        pushUidToExtension(user.uid);
+      }
     });
 
     return unsubscribe;
@@ -87,4 +124,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       {!loading && children}
     </AuthContext.Provider>
   );
-}; 
+};
+
+export default AuthContext; 
