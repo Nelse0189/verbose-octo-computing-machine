@@ -1,1 +1,29 @@
- 
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Per-user schedule document: schedules/{uid}
+    match /schedules/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Study summaries subcollection: schedules/{uid}/summaries/{summaryId}
+      match /summaries/{summaryId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Textbooks uploaded by users; access restricted to owner
+    match /textbooks/{docId} {
+      // Create allowed only if the ownerUid matches the authenticated user
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+      // Read allowed for all authenticated users (for title matching in summaries)
+      allow read: if request.auth != null;
+      // Update/delete allowed only to the owner
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.ownerUid;
+      
+      // Subchapters subcollection (legacy data)
+      match /subchapters/{subId} {
+        allow read: if request.auth != null;
+      }
+    }
+  }
+}

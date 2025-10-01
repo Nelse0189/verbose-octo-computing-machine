@@ -5,7 +5,7 @@ import PdfViewer from './PdfViewer';
 import { summarizeTopicWithTextbook, getSignedPdfUrl, TopicSummaryResponse } from '../lib/textbookRetrieval';
 import { db } from '../firebase/config';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -381,15 +381,78 @@ export default function CalendarView() {
                 const handleSummarize = async () => {
                   try {
                     setIsSummarizing(true);
-                    // Use event title directly; chapter-first retrieval handled server-side
+                    
+                    if (!authUid) {
+                      alert('Please sign in to generate study summaries.');
+                      return;
+                    }
+
+                    // Create cache key based on event title and date
+                    const cacheKey = `${formatDateKey(e.date)}__${e.id}`;
+                    const cacheRef = doc(db, 'schedules', authUid, 'summaries', cacheKey);
+                    
+                    // Try to load from cache first
+                    try {
+                      const cachedSnap = await getDoc(cacheRef);
+                      if (cachedSnap.exists()) {
+                        const cached = cachedSnap.data();
+                        console.log('[Calendar] Using cached study summary');
+                        setActiveSummary({ 
+                          eventId: e.id, 
+                          summary: cached.summary, 
+                          sources: cached.sources || [] 
+                        });
+                        
+                        // Prefetch first source PDF URL for viewer
+                        const first = (cached.sources || []).find((s: any) => s.storagePath && s.pageStart && s.pageEnd);
+                        if (first?.storagePath) {
+                          try {
+                            const url = await getSignedPdfUrl(first.storagePath);
+                            setActivePdf({ url, pageStart: first.pageStart, pageEnd: first.pageEnd });
+                          } catch {}
+                        }
+                        return;
+                      }
+                    } catch (cacheErr) {
+                      console.warn('[Calendar] Cache read failed, generating new summary:', cacheErr);
+                    }
+
+                    // Generate new summary if not cached
+                    console.log('[Calendar] Generating new study summary');
                     const resp: TopicSummaryResponse = await summarizeTopicWithTextbook(e.title);
-                    setActiveSummary({ eventId: e.id, summary: resp.summary, sources: resp.sources.map(s => ({ heading: s.heading, pageStart: s.pageStart || null, pageEnd: s.pageEnd || null, storagePath: s.storagePath || null })) });
+                    const summaryData = {
+                      eventId: e.id,
+                      summary: resp.summary,
+                      sources: resp.sources.map(s => ({ 
+                        heading: s.heading, 
+                        pageStart: s.pageStart || null, 
+                        pageEnd: s.pageEnd || null, 
+                        storagePath: s.storagePath || null 
+                      }))
+                    };
+                    
+                    setActiveSummary(summaryData);
+                    
+                    // Save to cache
+                    try {
+                      await setDoc(cacheRef, {
+                        ...summaryData,
+                        eventTitle: e.title,
+                        eventDate: formatDateKey(e.date),
+                        generatedAt: new Date().toISOString(),
+                        cachedAt: new Date().toISOString()
+                      });
+                      console.log('[Calendar] Study summary cached successfully');
+                    } catch (saveErr) {
+                      console.warn('[Calendar] Failed to cache study summary:', saveErr);
+                    }
+                    
                     // Prefetch first source PDF URL for viewer
                     const first = resp.sources.find(s => s.storagePath && s.pageStart && s.pageEnd);
                     if (first?.storagePath) {
                       try {
                         const url = await getSignedPdfUrl(first.storagePath);
-                        setActivePdf({ url });
+                        setActivePdf({ url, pageStart: first.pageStart, pageEnd: first.pageEnd });
                       } catch {}
                     }
                   } catch (err) {
@@ -460,7 +523,29 @@ export default function CalendarView() {
                               </div>
                               
                               <div className="mt-6 pt-4 border-t">
-                                <h3 className="font-semibold mb-2">Sources</h3>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h3 className="font-semibold">Sources</h3>
+                                  <button
+                                    className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
+                                    onClick={async () => {
+                                      if (!authUid) return;
+                                      // Force regenerate by deleting cache and calling handleSummarize again
+                                      const cacheKey = `${formatDateKey(e.date)}__${e.id}`;
+                                      const cacheRef = doc(db, 'schedules', authUid, 'summaries', cacheKey);
+                                      try {
+                                        await deleteDoc(cacheRef);
+                                        console.log('[Calendar] Cache cleared, regenerating summary');
+                                        setActiveSummary(null);
+                                        handleSummarize();
+                                      } catch (err) {
+                                        console.warn('[Calendar] Failed to clear cache:', err);
+                                        handleSummarize(); // Try regenerating anyway
+                                      }
+                                    }}
+                                  >
+                                    Regenerate
+                                  </button>
+                                </div>
                                 {activeSummary.sources.map((s, idx) => (
                                   <div key={idx} className="mb-2 p-2 bg-gray-50 rounded">
                                     <div className="font-medium">[S{idx+1}] {s.heading || 'Section'}</div>
