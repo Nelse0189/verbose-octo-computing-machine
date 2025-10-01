@@ -115,23 +115,48 @@ export async function generateScheduleFromDocs(
 Available textbook sections:
 ${segmentsList}
 
-STRICT RULES:
-- If explicit dates exist in the documents, USE THEM EXACTLY. Do not shift or guess.
-- If a week table shows "Exam 1" next to a specific date (e.g., Oct 2), use that exact calendar day.
-- If unsure, prefer leaving an item unscheduled instead of guessing.
-- Provide provenance by including sourceTitle and, if present in text, sourceLink.
-- Keep items in the proper semester window.
-- For lecture/study items, include the relevant section number in the "section" field (e.g., "1.2") and use descriptive titles like "Section 1.2: Systems of Linear Equations".
-- Match textbook sections to course topics when possible.
-Return ONLY JSON as {"generatedAt":"ISO","items":[{"id":"string","date":"YYYY-MM-DD","title":"string","type":"exam|assignment|lecture|study|other","details":"string","sourceTitle":"string","sourceLink":"string","confidence":"high|medium|low","section":"1.2"}...]}.`;
+CONSENSUS POLICY & STRICT RULES:
+1. SYLLABUS DATES ARE ABSOLUTE TRUTH - If a syllabus explicitly states "Oct 15: Chapter 3.2 & 3.3", create TWO separate items for that date, both with high confidence.
+2. EXPLICIT DATES OVERRIDE EVERYTHING - Never move, shift, or guess dates when they're explicitly stated in documents.
+3. HANDLE MULTIPLE TOPICS PER DAY - If syllabus shows "Week 5 (Oct 15): Sections 2.1, 2.2, 2.3", create separate items for each section on that date.
+4. DOCUMENT HIERARCHY - Syllabus > Assignment sheets > Lecture notes > Textbook order
+5. CONFLICT RESOLUTION - If documents conflict on dates, prefer the most official source (usually syllabus)
+6. SECTION MATCHING - Match course topics to textbook sections, but NEVER let section order override syllabus dates
+7. CONFIDENCE LEVELS:
+   - "high": Explicit date in syllabus/official document
+   - "medium": Implied from schedule pattern or week structure  
+   - "low": Estimated based on textbook order or general timing
+
+For each item, include:
+- Exact date from syllabus if available
+- Relevant section number in "section" field (e.g., "2.1")
+- Descriptive title like "Section 2.1: Linear Independence" 
+- Source document for provenance
+- Appropriate confidence level
+
+Return ONLY JSON as {"generatedAt":"ISO","items":[{"id":"string","date":"YYYY-MM-DD","title":"string","type":"exam|assignment|lecture|study|other","details":"string","sourceTitle":"string","sourceLink":"string","confidence":"high|medium|low","section":"2.1"}...]}.`;
 
   const start = new Date(startDateISO);
   const header = `Start date: ${start.toISOString().slice(0,10)}.`;
 
+  // Prioritize documents: syllabi first, then assignments, then others
+  const prioritizedDocs = [...docs].sort((a, b) => {
+    const aIsSyllabus = /syllabus|course.outline|schedule/i.test(a.title);
+    const bIsSyllabus = /syllabus|course.outline|schedule/i.test(b.title);
+    const aIsAssignment = /assignment|homework|project|exam/i.test(a.title);
+    const bIsAssignment = /assignment|homework|project|exam/i.test(b.title);
+    
+    if (aIsSyllabus && !bIsSyllabus) return -1;
+    if (!aIsSyllabus && bIsSyllabus) return 1;
+    if (aIsAssignment && !bIsAssignment) return -1;
+    if (!aIsAssignment && bIsAssignment) return 1;
+    return 0;
+  });
+
   const parts: any[] = [{ text: `${sys}\n\n${header}` }];
-  const titles = docs.map(d => d.title).slice(0, 20);
-  console.log('[Scheduler] Gemini call prep:', { totalDocs: docs.length, firstTitles: titles });
-  docs.forEach((d, i) => {
+  const titles = prioritizedDocs.map(d => d.title).slice(0, 20);
+  console.log('[Scheduler] Gemini call prep (prioritized):', { totalDocs: prioritizedDocs.length, firstTitles: titles });
+  prioritizedDocs.forEach((d, i) => {
     parts.push({ text: `\n\n# Document ${i + 1}: ${d.title}` });
     if (d.text && d.text.trim().length > 0) {
       const chunks = chunkText(d.text, 15000);
@@ -185,12 +210,27 @@ export async function reconcileScheduleWithDocs(
   console.log('[Scheduler] Reconcile using model:', modelName);
   let model = genAI.getGenerativeModel({ model: modelName });
 
-  const sys = `You are validating a semester schedule plan against source documents.
-RULES:
-- If a document explicitly specifies a date for an item (e.g., exams, lectures, tables with week/date), correct the plan's date to exactly match.
-- If the docs are ambiguous, DO NOT GUESS. Keep the original date and set confidence to "low".
-- Preserve titles and types; update only dates, details, sourceTitle/sourceLink, and confidence as needed.
-- Return ONLY full JSON for the corrected plan with the same shape: {generatedAt, items:[...]}.`;
+  const sys = `You are performing FINAL VALIDATION of a semester schedule plan against source documents using CONSENSUS POLICY.
+
+VALIDATION & CONSENSUS RULES:
+1. SYLLABUS IS SUPREME - If ANY document (especially syllabus) explicitly states a date, that date is FINAL. Override any conflicting dates.
+2. MULTIPLE TOPICS VALIDATION - If syllabus says "Oct 15: Sections 2.1 & 2.2", ensure BOTH sections appear on Oct 15, not spread across days.
+3. CONFLICT RESOLUTION HIERARCHY:
+   - Syllabus dates > Assignment due dates > Lecture schedules > Textbook order > AI estimates
+4. CONFIDENCE ADJUSTMENT:
+   - "high": Explicitly stated in official documents (syllabus, assignment sheets)
+   - "medium": Strongly implied by document patterns or week structures
+   - "low": Estimated or inferred without explicit support
+5. DATE VALIDATION:
+   - If multiple documents agree on a date → confidence = "high"
+   - If only one document states date → confidence = "medium" 
+   - If no explicit date found → confidence = "low"
+6. PRESERVE MULTI-TOPIC DAYS - Don't artificially spread topics that should be on the same day
+7. SOURCE ACCURACY - Update sourceTitle to reflect the most authoritative document for each date
+
+CRITICAL: If you find explicit syllabus dates that contradict the current plan, FIX THEM. The syllabus schedule is non-negotiable.
+
+Return ONLY full JSON for the corrected plan: {generatedAt, items:[...]}.`;
 
   const parts: any[] = [{ text: sys }];
   parts.push({ text: `\nOriginalPlan:\n${JSON.stringify(initialPlan)}` });

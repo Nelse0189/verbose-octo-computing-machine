@@ -407,7 +407,19 @@ export default function CalendarView() {
                     {aiItem && (
                       <div className="mt-1 text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                         {aiItem.type && (<span className="mr-2 inline-block px-1 py-0.5 rounded bg-accent/40 border">{aiItem.type}</span>)}
+                        {aiItem.confidence && (
+                          <span className={`inline-block px-1 py-0.5 rounded text-xs ${
+                            aiItem.confidence === 'high' ? 'bg-green-100 text-green-800' :
+                            aiItem.confidence === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {aiItem.confidence === 'high' ? '✓ Syllabus' : 
+                             aiItem.confidence === 'medium' ? '~ Inferred' : 
+                             '? Estimated'}
+                          </span>
+                        )}
                         {aiItem.details && (<span>{aiItem.details}</span>)}
+                        {aiItem.sourceTitle && (<span className="text-xs">from: {aiItem.sourceTitle}</span>)}
                         {aiItem.sourceLink && (
                           <a className="ml-2 underline" href={aiItem.sourceLink} target="_blank" rel="noreferrer">source</a>
                         )}
