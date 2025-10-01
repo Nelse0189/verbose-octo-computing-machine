@@ -279,8 +279,8 @@ export default function CalendarView() {
         </div>
       </div>
 
-      {authUid && events.length > 0 && (
-        <div className="mb-3">
+      {authUid && (
+        <div className="mb-3 flex gap-2">
           <button 
             className="modern-button" 
             onClick={async () => {
@@ -293,11 +293,81 @@ export default function CalendarView() {
           >
             {isPlanning ? 'Regenerating...' : 'Regenerate Schedule'}
           </button>
+          
+          {/* Manual test generation button */}
+          <button 
+            className="modern-button bg-blue-500 text-white" 
+            onClick={async () => {
+              try {
+                setIsPlanning(true);
+                setPlanMessage('Testing calendar generation...');
+                
+                // Create test documents
+                const testDocs = [
+                  {
+                    title: "Course Syllabus - Linear Algebra",
+                    text: `Course Schedule:
+Week 1 (Sept 5): Introduction to Linear Systems - Section 1.1
+Week 2 (Sept 12): Row Reduction - Section 1.2  
+Week 3 (Sept 19): Vector Equations - Section 1.3
+Week 4 (Sept 26): Matrix Equations - Section 1.4
+Week 5 (Oct 3): Linear Independence - Section 1.7
+Midterm Exam: October 10
+Week 6 (Oct 17): Introduction to Transformations - Section 1.8
+Week 7 (Oct 24): Matrix of Linear Transformation - Section 1.9
+Final Exam: December 15`
+                  }
+                ];
+                
+                const plan = await generateScheduleFromDocs(testDocs, new Date().toISOString());
+                setAiPlan(plan);
+                setPlanMessage('Test calendar generated successfully!');
+                
+                // Save to Firebase
+                if (authUid) {
+                  const ref = doc(db, 'schedules', authUid);
+                  await setDoc(ref, { 
+                    plan, 
+                    docsHash: 'test-hash', 
+                    updatedAt: new Date().toISOString() 
+                  }, { merge: true });
+                }
+              } catch (err) {
+                console.error('Test generation failed:', err);
+                setPlanMessage('Test generation failed: ' + String(err));
+              } finally {
+                setIsPlanning(false);
+              }
+            }}
+            disabled={isPlanning}
+            style={{ padding: '6px 12px', width: 'auto' }}
+          >
+            Test Generate
+          </button>
+          
           {planMessage && <span className="ml-2 text-xs text-muted-foreground">{planMessage}</span>}
         </div>
       )}
 
       {loading && <div>Loading saved materials…</div>}
+      
+      {/* Debug Information */}
+      {!loading && (
+        <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
+          <div><strong>Debug Info:</strong></div>
+          <div>• Signed in: {authUid ? '✅ Yes' : '❌ No'}</div>
+          <div>• Extension ID: {extensionId || 'None'}</div>
+          <div>• Materials found: {materialsMeta.length}</div>
+          <div>• PDF materials: {materialsMeta.filter(m => m.hasFile && String(m.mimeType||'').toLowerCase().includes('pdf')).length}</div>
+          <div>• Course materials: {course?.materials?.length || 0}</div>
+          <div>• Auto-planned: {autoPlanned ? 'Yes' : 'No'}</div>
+          <div>• Plan message: {planMessage}</div>
+          <div>• AI Plan exists: {aiPlan ? 'Yes' : 'No'}</div>
+          <div>• Events: {events.length}</div>
+          {extError && <div>• Extension error: {extError}</div>}
+        </div>
+      )}
+
       {!loading && events.length === 0 && (
         <div>
           No saved materials found yet. Open Saved Data to grant permission, then try again.
