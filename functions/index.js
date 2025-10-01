@@ -866,7 +866,68 @@ exports.textbookTopicSummary = functions.https.onRequest((req, res) => {
 
       // 1) Find relevant textbook segments (TOC-based)
       const db = admin.firestore();
-      const contexts = await findRelevantSegments(topic, forcedTextbookId);
+      let contexts = await findRelevantSegments(topic, forcedTextbookId);
+
+      // 1b) Fallback: if no explicit token match, fuzzy-match topic to segment titles
+      if (contexts.length === 0) {
+        try {
+          const norm = (s) => String(s || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9\.\s]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          const topicNorm = norm(topic);
+          const topicWords = new Set(topicNorm.split(' ').filter(w => w.length > 2 && isNaN(Number(w))));
+
+          let query2 = admin.firestore().collection('textbooks');
+          if (forcedTextbookId) query2 = query2.where('__name__', '==', forcedTextbookId);
+          const snaps = await query2.get();
+          const candidates = [];
+          snaps.forEach(doc => {
+            const data2 = doc.data() || {};
+            const storagePath2 = data2.storagePath;
+            const segments2 = Array.isArray(data2.segments) ? data2.segments : [];
+            for (const seg of segments2) {
+              const segTitle = norm(seg.title);
+              const segWords = new Set(segTitle.split(' ').filter(w => w.length > 2 && isNaN(Number(w))));
+              // simple overlap score
+              let overlap = 0;
+              for (const w of segWords) if (topicWords.has(w)) overlap++;
+              // small bonus if section token text appears verbatim
+              if (seg.sectionToken && topic.toLowerCase().includes(String(seg.sectionToken).toLowerCase())) overlap += 2;
+              if (overlap > 0) {
+                candidates.push({
+                  score: overlap,
+                  textbookId: doc.id,
+                  storagePath: storagePath2,
+                  heading: seg.title,
+                  pageStart: seg.pageStart,
+                  pageEnd: seg.pageEnd,
+                  sectionToken: seg.sectionToken,
+                  kind: seg.kind,
+                });
+              }
+            }
+          });
+          candidates.sort((a,b) => b.score - a.score);
+          const top = candidates.slice(0, 2);
+          if (top.length > 0) {
+            contexts = top.map(c => ({
+              textbookId: c.textbookId,
+              storagePath: c.storagePath,
+              heading: c.heading,
+              pages: (c.pageStart && c.pageEnd) ? `${c.pageStart}-${c.pageEnd}` : null,
+              pageStart: c.pageStart,
+              pageEnd: c.pageEnd,
+              sectionToken: c.sectionToken,
+              kind: c.kind,
+            }));
+            logger.info('[textbookTopicSummary] Fuzzy-matched segments by title overlap', { count: contexts.length });
+          }
+        } catch (e) {
+          logger.warn('[textbookTopicSummary] Fuzzy segment match failed', e);
+        }
+      }
 
       // Hydrate contexts with page images by calling the renderer service
       const imageParts = [];
@@ -906,7 +967,7 @@ exports.textbookTopicSummary = functions.https.onRequest((req, res) => {
         }
       }
 
-      // If no segments found, try vector search as fallback (for legacy subchapters)
+      // If still no segments found, try vector search as fallback (for legacy subchapters)
       if (contexts.length === 0) {
         logger.info('[textbookTopicSummary] No segments found, trying vector search fallback');
         const embeddingResponse = await genAI.getGenerativeModel({ model: 'text-embedding-004' }).embedContent({

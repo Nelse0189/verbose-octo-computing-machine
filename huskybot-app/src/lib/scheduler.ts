@@ -1,4 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { db } from '../firebase/config';
+import { collection, getDocs } from 'firebase/firestore';
 
 export type ScheduledItem = {
   id: string;
@@ -9,6 +11,7 @@ export type ScheduledItem = {
   sourceTitle?: string;
   sourceLink?: string;
   confidence?: 'high' | 'medium' | 'low';
+  section?: string; // e.g., "1.2", "3.4"
 };
 
 export type SchedulePlan = {
@@ -36,17 +39,59 @@ function chunkText(input: string, max = 12000): string[] {
 
 const FN_URL: string | undefined = (import.meta as any).env?.VITE_SCHEDULE_FUNCTION_URL;
 
+async function getTextbookSegments(): Promise<Array<{ sectionToken: string; title: string; textbookTitle?: string }>> {
+  try {
+    const textbooksSnap = await getDocs(collection(db, 'textbooks'));
+    const segments: Array<{ sectionToken: string; title: string; textbookTitle?: string }> = [];
+    
+    textbooksSnap.forEach(doc => {
+      const data = doc.data();
+      const textbookTitle = data.title || '';
+      const docSegments = data.segments || [];
+      
+      for (const seg of docSegments) {
+        if (seg.sectionToken && seg.title && seg.kind === 'section') {
+          segments.push({
+            sectionToken: seg.sectionToken,
+            title: seg.title,
+            textbookTitle
+          });
+        }
+      }
+    });
+    
+    return segments.sort((a, b) => {
+      // Sort by section number (e.g., "1.1" before "1.2" before "2.1")
+      const aParts = a.sectionToken.split('.').map(Number);
+      const bParts = b.sectionToken.split('.').map(Number);
+      for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+        const aVal = aParts[i] || 0;
+        const bVal = bParts[i] || 0;
+        if (aVal !== bVal) return aVal - bVal;
+      }
+      return 0;
+    });
+  } catch (error) {
+    console.warn('[Scheduler] Failed to fetch textbook segments:', error);
+    return [];
+  }
+}
+
 export async function generateScheduleFromDocs(
   docs: { title: string; text?: string; base64?: string; mimeType?: string }[],
   startDateISO: string
 ): Promise<SchedulePlan> {
+  // Fetch textbook segments to include in planning
+  const segments = await getTextbookSegments();
+  console.log('[Scheduler] Found textbook segments:', segments.length);
+
   // Prefer Cloud Function if configured
   if (FN_URL) {
     console.log('[Scheduler] Using function URL for schedule:', FN_URL);
     const resp = await fetch(FN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ docs, startDate: startDateISO }),
+      body: JSON.stringify({ docs, startDate: startDateISO, segments }),
     });
     if (!resp.ok) throw new Error(`Schedule function error: ${resp.status}`);
     const data = await resp.json();
@@ -63,14 +108,22 @@ export async function generateScheduleFromDocs(
   console.log('[Scheduler] Using Gemini model:', modelName);
   let model = genAI.getGenerativeModel({ model: modelName });
 
+  const segmentsList = segments.map(s => `${s.sectionToken}: ${s.title}`).join('\n');
+  
   const sys = `You are an academic planning assistant. From course documents (syllabi, assignments, lecture notes), derive a semester plan.
+
+Available textbook sections:
+${segmentsList}
+
 STRICT RULES:
 - If explicit dates exist in the documents, USE THEM EXACTLY. Do not shift or guess.
 - If a week table shows "Exam 1" next to a specific date (e.g., Oct 2), use that exact calendar day.
 - If unsure, prefer leaving an item unscheduled instead of guessing.
 - Provide provenance by including sourceTitle and, if present in text, sourceLink.
 - Keep items in the proper semester window.
-Return ONLY JSON as {"generatedAt":"ISO","items":[{"id":"string","date":"YYYY-MM-DD","title":"string","type":"exam|assignment|lecture|study|other","details":"string","sourceTitle":"string","sourceLink":"string","confidence":"high|medium|low"}...]}.`;
+- For lecture/study items, include the relevant section number in the "section" field (e.g., "1.2") and use descriptive titles like "Section 1.2: Systems of Linear Equations".
+- Match textbook sections to course topics when possible.
+Return ONLY JSON as {"generatedAt":"ISO","items":[{"id":"string","date":"YYYY-MM-DD","title":"string","type":"exam|assignment|lecture|study|other","details":"string","sourceTitle":"string","sourceLink":"string","confidence":"high|medium|low","section":"1.2"}...]}.`;
 
   const start = new Date(startDateISO);
   const header = `Start date: ${start.toISOString().slice(0,10)}.`;

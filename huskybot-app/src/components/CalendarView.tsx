@@ -274,7 +274,23 @@ export default function CalendarView() {
         </div>
       </div>
 
-      {/* Removed manual Generate/Clear controls; planning runs automatically. */}
+      {authUid && events.length > 0 && (
+        <div className="mb-3">
+          <button 
+            className="modern-button" 
+            onClick={async () => {
+              setAutoPlanned(false);
+              setAiPlan(null);
+              // This will trigger the useEffect to regenerate
+            }}
+            disabled={isPlanning}
+            style={{ padding: '6px 12px', width: 'auto' }}
+          >
+            {isPlanning ? 'Regenerating...' : 'Regenerate Schedule'}
+          </button>
+          {planMessage && <span className="ml-2 text-xs text-muted-foreground">{planMessage}</span>}
+        </div>
+      )}
 
       {loading && <div>Loading saved materials…</div>}
       {!loading && events.length === 0 && (
@@ -380,7 +396,14 @@ export default function CalendarView() {
                 };
                 return (
                   <div key={e.id} className="mb-2 p-2 rounded border bg-card/40">
-                    <div className="text-sm font-medium">• {e.title}</div>
+                    <div className="text-sm font-medium">
+                      • {e.title}
+                      {aiItem?.section && (
+                        <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                          Section {aiItem.section}
+                        </span>
+                      )}
+                    </div>
                     {aiItem && (
                       <div className="mt-1 text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                         {aiItem.type && (<span className="mr-2 inline-block px-1 py-0.5 rounded bg-accent/40 border">{aiItem.type}</span>)}
