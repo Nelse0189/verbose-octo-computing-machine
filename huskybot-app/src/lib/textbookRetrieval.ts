@@ -26,11 +26,11 @@ export async function summarizeTopicWithTextbook(topic: string, textbookId?: str
   return res.json();
 }
 
-export async function getSignedPdfUrl(storagePath: string, minutes = 15): Promise<string> {
+export async function getSignedPdfUrl(storagePath: string, minutes = 15, pageStart?: number): Promise<string> {
   const res = await fetch('/getSignedPdfUrl', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ storagePath, minutes })
+    body: JSON.stringify({ storagePath, minutes, pageStart })
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');

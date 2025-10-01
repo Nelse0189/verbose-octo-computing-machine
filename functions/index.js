@@ -692,6 +692,7 @@ exports.getSignedPdfUrl = functions
       const body = req.body || {};
       const storagePath = body.storagePath || body.path;
       const minutes = Math.max(1, Math.min(120, Number(body.minutes || 15)));
+      const pageStart = body.pageStart ? Number(body.pageStart) : null;
       if (!storagePath || typeof storagePath !== 'string') {
         return res.status(400).send('Missing storagePath');
       }
@@ -715,6 +716,12 @@ exports.getSignedPdfUrl = functions
       const [exists] = await file.exists();
       if (!exists) return res.status(404).send({ error: 'File not found', bucket: targetBucketName, path: objectPath });
 
+      // Build query params - include page if specified
+      const queryParams = { 'response-content-disposition': 'inline' };
+      if (pageStart && pageStart > 0) {
+        queryParams['page'] = String(pageStart);
+      }
+
       const [url] = await file.getSignedUrl({
         action: 'read',
         expires: Date.now() + minutes * 60 * 1000,
@@ -722,7 +729,7 @@ exports.getSignedPdfUrl = functions
         // Do not set contentType on GET; browsers won't send the header and the signature will fail (400)
         // You can force inline rendering via response-content-disposition
         extensionHeaders: {},
-        queryParams: { 'response-content-disposition': 'inline' },
+        queryParams,
       });
 
       return res.status(200).send({ url, expiresInMinutes: minutes, bucket: targetBucketName, path: objectPath });

@@ -477,7 +477,7 @@ Final Exam: December 15`
                         const first = (cached.sources || []).find((s: any) => s.storagePath && s.pageStart && s.pageEnd);
                         if (first?.storagePath) {
                           try {
-                            const url = await getSignedPdfUrl(first.storagePath);
+                            const url = await getSignedPdfUrl(first.storagePath, 15, first.pageStart || undefined);
                             setActivePdf({ url, pageStart: first.pageStart, pageEnd: first.pageEnd });
                           } catch {}
                         }
@@ -521,7 +521,7 @@ Final Exam: December 15`
                     const first = resp.sources.find(s => s.storagePath && s.pageStart && s.pageEnd);
                     if (first?.storagePath) {
                       try {
-                        const url = await getSignedPdfUrl(first.storagePath);
+                        const url = await getSignedPdfUrl(first.storagePath, 15, first.pageStart || undefined);
                         setActivePdf({ url, pageStart: first.pageStart, pageEnd: first.pageEnd });
                       } catch {}
                     }
@@ -625,7 +625,7 @@ Final Exam: December 15`
                                         className="mt-1 px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
                                         onClick={async () => {
                                           try {
-                                            const url = await getSignedPdfUrl(s.storagePath!);
+                                            const url = await getSignedPdfUrl(s.storagePath!, 15, s.pageStart || undefined);
                                             setActivePdf({ url, pageStart: s.pageStart, pageEnd: s.pageEnd });
                                           } catch {
                                             alert('Failed to open PDF source.');
