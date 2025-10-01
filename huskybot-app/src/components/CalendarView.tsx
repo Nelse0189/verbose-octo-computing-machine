@@ -561,12 +561,16 @@ Final Exam: December 15`
                         {aiItem.sourceLink && (
                           <a className="ml-2 underline" href={aiItem.sourceLink} target="_blank" rel="noreferrer">source</a>
                         )}
-                        <button className="modern-button" onClick={handleSummarize} style={{ padding: '4px 8px', width: 'auto' }}>{isSummarizing ? 'Summarizing…' : 'Study Summary'}</button>
+                        <button className="modern-button" onClick={handleSummarize} style={{ padding: '4px 8px', width: 'auto' }} disabled={isSummarizing}>
+                          {isSummarizing ? '🤖 Analyzing textbook pages...' : 'Study Summary'}
+                        </button>
                       </div>
                     )}
                     {!aiItem && (
                       <div className="mt-1 text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-                        <button className="modern-button" onClick={handleSummarize} style={{ padding: '4px 8px', width: 'auto' }}>{isSummarizing ? 'Summarizing…' : 'Study Summary'}</button>
+                        <button className="modern-button" onClick={handleSummarize} style={{ padding: '4px 8px', width: 'auto' }} disabled={isSummarizing}>
+                          {isSummarizing ? '🤖 Analyzing textbook pages...' : 'Study Summary'}
+                        </button>
                       </div>
                     )}
 

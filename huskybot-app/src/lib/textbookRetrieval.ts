@@ -14,16 +14,32 @@ export interface TopicSummaryResponse {
 }
 
 export async function summarizeTopicWithTextbook(topic: string, textbookId?: string, namespace?: string, limit?: number): Promise<TopicSummaryResponse> {
-  const res = await fetch('/textbookTopicSummary', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, textbookId, namespace, limit })
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`textbookTopicSummary failed: ${res.status} ${text}`);
+  // Add timeout to frontend request (5 minutes)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+  
+  try {
+    const res = await fetch('/textbookTopicSummary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, textbookId, namespace, limit }),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`textbookTopicSummary failed: ${res.status} ${text}`);
+    }
+    return res.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out after 5 minutes. The AI is processing complex content - please try again.');
+    }
+    throw error;
   }
-  return res.json();
 }
 
 export async function getSignedPdfUrl(storagePath: string, minutes = 15, pageStart?: number): Promise<string> {

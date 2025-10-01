@@ -811,7 +811,9 @@ exports.chat = functions.https.onRequest((req, res) => {
 });
 
 // Summarize a topic with textbook context
-exports.textbookTopicSummary = functions.https.onRequest((req, res) => {
+exports.textbookTopicSummary = functions
+  .runWith({ timeoutSeconds: 300, memory: '1GB' })
+  .https.onRequest((req, res) => {
   cors(req, res, async () => {
     try {
       initializeClients();
@@ -938,10 +940,14 @@ exports.textbookTopicSummary = functions.https.onRequest((req, res) => {
 
       // Hydrate contexts with page images by calling the renderer service
       const imageParts = [];
-      for (const c of contexts) {
-        if (!c.storagePath || !c.pageStart || !c.pageEnd) continue;
+      const renderPromises = contexts.map(async (c) => {
+        if (!c.storagePath || !c.pageStart || !c.pageEnd) return null;
         try {
           if (!pdfRendererEndpoint) throw new Error('PDF renderer endpoint is not configured');
+
+          // Add timeout to PDF rendering requests
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout
 
           const rendererResponse = await fetch(`${pdfRendererEndpoint}/render-pages`, {
             method: 'POST',
@@ -951,7 +957,10 @@ exports.textbookTopicSummary = functions.https.onRequest((req, res) => {
               pageStart: c.pageStart,
               pageEnd: c.pageEnd,
             }),
+            signal: controller.signal,
           });
+
+          clearTimeout(timeoutId);
 
           if (!rendererResponse.ok) {
             const errorBody = await rendererResponse.text();
@@ -960,18 +969,31 @@ exports.textbookTopicSummary = functions.https.onRequest((req, res) => {
 
           const { images } = await rendererResponse.json();
           if (images && Array.isArray(images)) {
-            for (const img of images) {
-              imageParts.push({
-                inlineData: {
-                  mimeType: 'image/png',
-                  data: img.base64,
-                },
-              });
-            }
+            return images.map(img => ({
+              inlineData: {
+                mimeType: 'image/png',
+                data: img.base64,
+              },
+            }));
           }
+          return [];
         } catch (e) {
           logger.error(`[textbookTopicSummary] Failed to render PDF pages for textbook ${c.textbookId}`, e);
+          return [];
         }
+      });
+
+      // Process all PDF rendering in parallel with timeout
+      try {
+        const renderResults = await Promise.allSettled(renderPromises);
+        renderResults.forEach(result => {
+          if (result.status === 'fulfilled' && result.value) {
+            imageParts.push(...result.value);
+          }
+        });
+        logger.info(`[textbookTopicSummary] Successfully rendered ${imageParts.length} page images`);
+      } catch (e) {
+        logger.error('[textbookTopicSummary] PDF rendering batch failed', e);
       }
 
       // If still no segments found, try vector search as fallback (for legacy subchapters)
@@ -1053,8 +1075,16 @@ Return markdown without frontmatter.`;
         },
       };
 
-      const result = await geminiModel.generateContent(requestPayload);
+      // Add timeout to Gemini AI call
+      logger.info(`[textbookTopicSummary] Calling Gemini with ${imageParts.length} images`);
+      const result = await Promise.race([
+        geminiModel.generateContent(requestPayload),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Gemini AI timeout after 120 seconds')), 120000)
+        )
+      ]);
       const text = await result.response.text();
+      logger.info(`[textbookTopicSummary] Gemini response received, length: ${text.length}`);
       return res.status(200).send({ summary: text, sources: contexts.map((c, i) => ({ id: i + 1, heading: c.heading, pages: c.pages, pageStart: c.pageStart || null, pageEnd: c.pageEnd || null, textbookId: c.textbookId || null, storagePath: c.storagePath || null })) });
     } catch (e) {
       logger.error('[textbookTopicSummary] Failed', e);
@@ -1063,7 +1093,9 @@ Return markdown without frontmatter.`;
   });
 });
 
-exports.retrieveRelevant = functions.https.onRequest((req, res) => {
+exports.retrieveRelevant = functions
+  .runWith({ timeoutSeconds: 120, memory: '512MB' })
+  .https.onRequest((req, res) => {
   cors(req, res, async () => {
     try {
       initializeClients();
