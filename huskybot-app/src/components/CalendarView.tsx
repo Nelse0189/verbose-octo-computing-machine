@@ -6,6 +6,11 @@ import { summarizeTopicWithTextbook, getSignedPdfUrl, TopicSummaryResponse } fro
 import { db } from '../firebase/config';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 type CalendarMode = 'month' | 'week' | 'day';
 
@@ -92,7 +97,7 @@ export default function CalendarView() {
   const [autoPlanned, setAutoPlanned] = useState<boolean>(false);
   const [authUid, setAuthUid] = useState<string | null>(null);
   const [activeSummary, setActiveSummary] = useState<{ eventId: string; summary: string; sources: { heading?: string | null; pageStart?: number | null; pageEnd?: number | null; storagePath?: string | null }[] } | null>(null);
-  const [activePdf, setActivePdf] = useState<{ url: string } | null>(null);
+  const [activePdf, setActivePdf] = useState<{ url: string; pageStart?: number | null; pageEnd?: number | null } | null>(null);
   const [isSummarizing, setIsSummarizing] = useState<boolean>(false);
 
   useEffect(() => {
@@ -433,38 +438,72 @@ export default function CalendarView() {
                     )}
 
                     {activeSummary?.eventId === e.id && (
-                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3" style={{ minHeight: '400px' }}>
-                        <div className="p-2 rounded border overflow-auto" style={{ maxHeight: '70vh' }}>
-                          <div className="prose prose-sm max-w-none whitespace-pre-wrap">{activeSummary.summary}</div>
-                          <div className="mt-3 text-xs">
-                            <div className="font-semibold mb-1">Sources</div>
-                            {activeSummary.sources.map((s, idx) => (
-                              <div key={idx} className="mb-1">
-                                <span>[S{idx+1}] {s.heading || 'Section'} — pages {s.pageStart ?? '?'}–{s.pageEnd ?? '?'}</span>
-                                {s.storagePath && (
-                                  <button
-                                    className="modern-button ml-2"
-                                    onClick={async () => {
-                                      try {
-                                        const url = await getSignedPdfUrl(s.storagePath!);
-                                        setActivePdf({ url });
-                                      } catch {
-                                        alert('Failed to open PDF source.');
-                                      }
-                                    }}
-                                    style={{ padding: '2px 6px', width: 'auto' }}
-                                  >Open PDF</button>
-                                )}
-                              </div>
-                            ))}
+                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setActiveSummary(null)}>
+                        <div className="bg-white rounded-lg shadow-xl w-[95vw] h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-between p-4 border-b">
+                            <h2 className="text-lg font-semibold">Study Summary: {e.title}</h2>
+                            <button 
+                              onClick={() => setActiveSummary(null)}
+                              className="text-gray-500 hover:text-gray-700 text-xl font-bold"
+                            >×</button>
                           </div>
-                        </div>
-                        <div className="p-0 rounded border overflow-hidden" style={{ height: '70vh' }}>
-                          {activePdf?.url ? (
-                            <PdfViewer url={activePdf.url} />
-                          ) : (
-                            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Select a source to view PDF</div>
-                          )}
+                          
+                          <div className="flex-1 flex overflow-hidden">
+                            <div className={`${activePdf?.url ? 'w-1/2' : 'w-full'} p-4 overflow-auto border-r`}>
+                              <div className="prose prose-sm max-w-none">
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm, remarkMath]}
+                                  rehypePlugins={[rehypeKatex]}
+                                >
+                                  {activeSummary.summary}
+                                </ReactMarkdown>
+                              </div>
+                              
+                              <div className="mt-6 pt-4 border-t">
+                                <h3 className="font-semibold mb-2">Sources</h3>
+                                {activeSummary.sources.map((s, idx) => (
+                                  <div key={idx} className="mb-2 p-2 bg-gray-50 rounded">
+                                    <div className="font-medium">[S{idx+1}] {s.heading || 'Section'}</div>
+                                    <div className="text-sm text-gray-600">Pages {s.pageStart ?? '?'}–{s.pageEnd ?? '?'}</div>
+                                    {s.storagePath && (
+                                      <button
+                                        className="mt-1 px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+                                        onClick={async () => {
+                                          try {
+                                            const url = await getSignedPdfUrl(s.storagePath!);
+                                            setActivePdf({ url, pageStart: s.pageStart, pageEnd: s.pageEnd });
+                                          } catch {
+                                            alert('Failed to open PDF source.');
+                                          }
+                                        }}
+                                      >View Pages {s.pageStart}–{s.pageEnd}</button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            {activePdf?.url && (
+                              <div className="w-1/2 flex flex-col">
+                                <div className="p-2 border-b bg-gray-50 flex items-center justify-between">
+                                  <span className="text-sm font-medium">
+                                    PDF Viewer {activePdf.pageStart && activePdf.pageEnd && `(Pages ${activePdf.pageStart}–${activePdf.pageEnd})`}
+                                  </span>
+                                  <button 
+                                    onClick={() => setActivePdf(null)}
+                                    className="text-gray-500 hover:text-gray-700"
+                                  >Close PDF</button>
+                                </div>
+                                <div className="flex-1 overflow-hidden">
+                                  <PdfViewer 
+                                    url={activePdf.url} 
+                                    pageStart={activePdf.pageStart} 
+                                    pageEnd={activePdf.pageEnd} 
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
