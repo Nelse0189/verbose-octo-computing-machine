@@ -334,7 +334,16 @@ Final Exam: December 15`
                 }
               } catch (err) {
                 console.error('Test generation failed:', err);
-                setPlanMessage('Test generation failed: ' + String(err));
+                const errorMsg = String(err);
+                if (errorMsg.includes('VITE_GEMINI_API_KEY')) {
+                  setPlanMessage('❌ Missing Google AI API key. Please create a .env file with VITE_GEMINI_API_KEY=your_key');
+                } else if (errorMsg.includes('503') || errorMsg.includes('overloaded')) {
+                  setPlanMessage('⏳ AI model is overloaded. Please try again in a few minutes.');
+                } else if (errorMsg.includes('404') || errorMsg.includes('not found')) {
+                  setPlanMessage('🔧 AI model not available. Using fallback models...');
+                } else {
+                  setPlanMessage('❌ Test generation failed: ' + errorMsg);
+                }
               } finally {
                 setIsPlanning(false);
               }

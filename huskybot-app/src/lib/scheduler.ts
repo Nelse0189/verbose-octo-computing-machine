@@ -101,10 +101,14 @@ export async function generateScheduleFromDocs(
   }
 
   const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  if (!apiKey) throw new Error('Missing VITE_GEMINI_API_KEY');
+  if (!apiKey) {
+    console.error('[Scheduler] Missing VITE_GEMINI_API_KEY environment variable');
+    throw new Error('Missing VITE_GEMINI_API_KEY - please set this environment variable with your Google AI API key');
+  }
+  console.log('[Scheduler] API key found, length:', apiKey.length);
   const genAI = new GoogleGenerativeAI(apiKey);
 
-  const modelName = (import.meta as any).env?.VITE_GEMINI_MODEL || 'gemini-2.5-pro';
+  const modelName = (import.meta as any).env?.VITE_GEMINI_MODEL || 'gemini-1.5-flash';
   console.log('[Scheduler] Using Gemini model:', modelName);
   let model = genAI.getGenerativeModel({ model: modelName });
 
@@ -174,9 +178,15 @@ Return ONLY JSON as {"generatedAt":"ISO","items":[{"id":"string","date":"YYYY-MM
   try {
     res = await model.generateContent({ contents: [{ role: 'user', parts }] });
   } catch (err) {
-    console.warn('[Scheduler] Primary model failed, falling back to gemini-1.5-flash:', err);
-    model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    res = await model.generateContent({ contents: [{ role: 'user', parts }] });
+    console.warn('[Scheduler] Primary model failed, trying gemini-1.5-pro:', err);
+    try {
+      model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+      res = await model.generateContent({ contents: [{ role: 'user', parts }] });
+    } catch (err2) {
+      console.warn('[Scheduler] Fallback model also failed, trying gemini-1.0-pro:', err2);
+      model = genAI.getGenerativeModel({ model: 'gemini-1.0-pro' });
+      res = await model.generateContent({ contents: [{ role: 'user', parts }] });
+    }
   }
   const txt = res.response.text();
   console.log('[Scheduler] Gemini raw text length:', (txt || '').length);
@@ -204,9 +214,12 @@ export async function reconcileScheduleWithDocs(
   initialPlan: SchedulePlan
 ): Promise<SchedulePlan> {
   const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  if (!apiKey) throw new Error('Missing VITE_GEMINI_API_KEY');
+  if (!apiKey) {
+    console.error('[Scheduler] Missing VITE_GEMINI_API_KEY environment variable');
+    throw new Error('Missing VITE_GEMINI_API_KEY - please set this environment variable with your Google AI API key');
+  }
   const genAI = new GoogleGenerativeAI(apiKey);
-  const modelName = (import.meta as any).env?.VITE_GEMINI_MODEL || 'gemini-2.5-pro';
+  const modelName = (import.meta as any).env?.VITE_GEMINI_MODEL || 'gemini-1.5-flash';
   console.log('[Scheduler] Reconcile using model:', modelName);
   let model = genAI.getGenerativeModel({ model: modelName });
 
@@ -249,9 +262,15 @@ Return ONLY full JSON for the corrected plan: {generatedAt, items:[...]}.`;
   try {
     res = await model.generateContent({ contents: [{ role: 'user', parts }] });
   } catch (err) {
-    console.warn('[Scheduler] Reconcile primary model failed, falling back to gemini-1.5-flash:', err);
-    model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    res = await model.generateContent({ contents: [{ role: 'user', parts }] });
+    console.warn('[Scheduler] Reconcile primary model failed, trying gemini-1.5-pro:', err);
+    try {
+      model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+      res = await model.generateContent({ contents: [{ role: 'user', parts }] });
+    } catch (err2) {
+      console.warn('[Scheduler] Reconcile fallback model also failed, trying gemini-1.0-pro:', err2);
+      model = genAI.getGenerativeModel({ model: 'gemini-1.0-pro' });
+      res = await model.generateContent({ contents: [{ role: 'user', parts }] });
+    }
   }
   const txt = res.response.text();
   console.log('[Scheduler] Reconcile response length:', (txt || '').length);
