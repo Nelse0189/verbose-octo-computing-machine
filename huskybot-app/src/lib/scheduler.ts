@@ -41,10 +41,31 @@ const FN_URL: string | undefined = (import.meta as any).env?.VITE_SCHEDULE_FUNCT
 
 async function getTextbookSegments(): Promise<Array<{ sectionToken: string; title: string; textbookTitle?: string }>> {
   try {
-    const textbooksSnap = await getDocs(collection(db, 'textbooks'));
+    // Add timeout and retry logic for Firestore
+    const fetchWithRetry = async (retries = 3): Promise<any> => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          console.log(`[Scheduler] Fetching textbook segments (attempt ${i + 1}/${retries})`);
+          const textbooksSnap = await Promise.race([
+            getDocs(collection(db, 'textbooks')),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Firestore timeout after 10 seconds')), 10000)
+            )
+          ]);
+          return textbooksSnap;
+        } catch (err) {
+          console.warn(`[Scheduler] Firestore attempt ${i + 1} failed:`, err);
+          if (i === retries - 1) throw err;
+          // Wait before retry (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+        }
+      }
+    };
+
+    const textbooksSnap = await fetchWithRetry();
     const segments: Array<{ sectionToken: string; title: string; textbookTitle?: string }> = [];
     
-    textbooksSnap.forEach(doc => {
+    textbooksSnap.forEach((doc: any) => {
       const data = doc.data();
       const textbookTitle = data.title || '';
       const docSegments = data.segments || [];
@@ -60,6 +81,8 @@ async function getTextbookSegments(): Promise<Array<{ sectionToken: string; titl
       }
     });
     
+    console.log(`[Scheduler] Successfully fetched ${segments.length} textbook segments`);
+    
     return segments.sort((a, b) => {
       // Sort by section number (e.g., "1.1" before "1.2" before "2.1")
       const aParts = a.sectionToken.split('.').map(Number);
@@ -72,7 +95,8 @@ async function getTextbookSegments(): Promise<Array<{ sectionToken: string; titl
       return 0;
     });
   } catch (error) {
-    console.warn('[Scheduler] Failed to fetch textbook segments:', error);
+    console.warn('[Scheduler] Failed to fetch textbook segments after retries:', error);
+    // Return empty array so schedule generation can continue without textbook segments
     return [];
   }
 }

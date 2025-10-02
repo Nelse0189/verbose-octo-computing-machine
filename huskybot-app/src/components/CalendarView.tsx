@@ -99,6 +99,7 @@ export default function CalendarView() {
   const [activeSummary, setActiveSummary] = useState<{ eventId: string; summary: string; sources: { heading?: string | null; pageStart?: number | null; pageEnd?: number | null; storagePath?: string | null }[] } | null>(null);
   const [activePdf, setActivePdf] = useState<{ url: string; pageStart?: number | null; pageEnd?: number | null } | null>(null);
   const [isSummarizing, setIsSummarizing] = useState<boolean>(false);
+  const [networkStatus, setNetworkStatus] = useState<'online' | 'offline' | 'slow'>('online');
 
   useEffect(() => {
     let mounted = true;
@@ -148,6 +149,37 @@ export default function CalendarView() {
     return () => unsub();
   }, []);
 
+  // Monitor network connectivity
+  useEffect(() => {
+    const updateNetworkStatus = () => {
+      if (!navigator.onLine) {
+        setNetworkStatus('offline');
+      } else {
+        // Test Firebase connectivity
+        const startTime = Date.now();
+        fetch('https://firestore.googleapis.com/', { method: 'HEAD', mode: 'no-cors' })
+          .then(() => {
+            const responseTime = Date.now() - startTime;
+            setNetworkStatus(responseTime > 3000 ? 'slow' : 'online');
+          })
+          .catch(() => setNetworkStatus('offline'));
+      }
+    };
+
+    updateNetworkStatus();
+    window.addEventListener('online', updateNetworkStatus);
+    window.addEventListener('offline', updateNetworkStatus);
+    
+    // Check connectivity every 30 seconds
+    const interval = setInterval(updateNetworkStatus, 30000);
+    
+    return () => {
+      window.removeEventListener('online', updateNetworkStatus);
+      window.removeEventListener('offline', updateNetworkStatus);
+      clearInterval(interval);
+    };
+  }, []);
+
   // Auto-plan when signed in and we have materials and haven't planned yet
   useEffect(() => {
     (async () => {
@@ -164,14 +196,21 @@ export default function CalendarView() {
         let savedHash: string | null = null;
         try {
           const ref = doc(db, 'schedules', authUid);
-          const snap = await getDoc(ref);
+          // Add timeout to Firestore read
+          const snap = await Promise.race([
+            getDoc(ref),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Firestore read timeout')), 8000)
+            )
+          ]) as any;
           if (snap.exists()) {
             const saved = snap.data() as any;
             if (saved.plan) setAiPlan(saved.plan as SchedulePlan);
             if (saved.docsHash) savedHash = String(saved.docsHash);
           }
         } catch (e) {
-          console.warn('[Calendar] Cache read skipped:', e);
+          console.warn('[Calendar] Cache read skipped (network issue):', e);
+          setPlanMessage('Network connectivity issue with Firebase. Continuing without cache...');
         }
 
         // 2) Build docs + hash to check for changes
@@ -209,9 +248,17 @@ export default function CalendarView() {
         setAiPlan(prev => mergePlans(prev, finalPlan));
         try {
           const ref = doc(db, 'schedules', authUid);
-          await setDoc(ref, { plan: finalPlan, docsHash, updatedAt: new Date().toISOString() }, { merge: true });
+          // Add timeout to Firestore write
+          await Promise.race([
+            setDoc(ref, { plan: finalPlan, docsHash, updatedAt: new Date().toISOString() }, { merge: true }),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Firestore write timeout')), 8000)
+            )
+          ]);
+          console.log('[Calendar] Schedule cached successfully');
         } catch (e) {
-          console.warn('[Calendar] Cache write skipped:', e);
+          console.warn('[Calendar] Cache write skipped (network issue):', e);
+          setPlanMessage('Schedule generated but cache failed due to network issues.');
         }
       } catch (e) {
         console.warn('[Calendar] Auto planning failed', e);
@@ -364,6 +411,7 @@ Final Exam: December 15`
       {!loading && (
         <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
           <div><strong>Debug Info:</strong></div>
+          <div>• Network: {networkStatus === 'online' ? '🟢 Online' : networkStatus === 'slow' ? '🟡 Slow' : '🔴 Offline'}</div>
           <div>• Signed in: {authUid ? '✅ Yes' : '❌ No'}</div>
           <div>• Extension ID: {extensionId || 'None'}</div>
           <div>• Materials found: {materialsMeta.length}</div>
@@ -374,6 +422,15 @@ Final Exam: December 15`
           <div>• AI Plan exists: {aiPlan ? 'Yes' : 'No'}</div>
           <div>• Events: {events.length}</div>
           {extError && <div>• Extension error: {extError}</div>}
+        </div>
+      )}
+
+      {networkStatus !== 'online' && (
+        <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 rounded text-sm">
+          ⚠️ <strong>Network Issues Detected:</strong> {
+            networkStatus === 'slow' ? 'Slow connection to Firebase. Operations may take longer.' :
+            'You appear to be offline. Some features may not work properly.'
+          }
         </div>
       )}
 
