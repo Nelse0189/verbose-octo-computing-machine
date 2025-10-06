@@ -151,32 +151,19 @@ export default function CalendarView() {
 
   // Monitor network connectivity
   useEffect(() => {
-    const updateNetworkStatus = () => {
-      if (!navigator.onLine) {
-        setNetworkStatus('offline');
-      } else {
-        // Test Firebase connectivity
-        const startTime = Date.now();
-        fetch('https://firestore.googleapis.com/', { method: 'HEAD', mode: 'no-cors' })
-          .then(() => {
-            const responseTime = Date.now() - startTime;
-            setNetworkStatus(responseTime > 3000 ? 'slow' : 'online');
-          })
-          .catch(() => setNetworkStatus('offline'));
-      }
-    };
-
-    updateNetworkStatus();
-    window.addEventListener('online', updateNetworkStatus);
-    window.addEventListener('offline', updateNetworkStatus);
+    const handleOnline = () => setNetworkStatus('online');
+    const handleOffline = () => setNetworkStatus('offline');
     
-    // Check connectivity every 30 seconds
-    const interval = setInterval(updateNetworkStatus, 30000);
+    // Initial status
+    setNetworkStatus(navigator.onLine ? 'online' : 'offline');
+    
+    // Listen for connectivity changes
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
     
     return () => {
-      window.removeEventListener('online', updateNetworkStatus);
-      window.removeEventListener('offline', updateNetworkStatus);
-      clearInterval(interval);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
@@ -210,6 +197,14 @@ export default function CalendarView() {
           }
         } catch (e) {
           console.warn('[Calendar] Cache read skipped (network issue):', e);
+          // Update network status based on Firebase errors
+          if (e instanceof Error && (
+            e.message.includes('timeout') || 
+            e.message.includes('QUIC') || 
+            e.message.includes('CONNECTION_TIMED_OUT')
+          )) {
+            setNetworkStatus('slow');
+          }
           setPlanMessage('Network connectivity issue with Firebase. Continuing without cache...');
         }
 
@@ -258,6 +253,14 @@ export default function CalendarView() {
           console.log('[Calendar] Schedule cached successfully');
         } catch (e) {
           console.warn('[Calendar] Cache write skipped (network issue):', e);
+          // Update network status based on Firebase errors
+          if (e instanceof Error && (
+            e.message.includes('timeout') || 
+            e.message.includes('QUIC') || 
+            e.message.includes('CONNECTION_TIMED_OUT')
+          )) {
+            setNetworkStatus('slow');
+          }
           setPlanMessage('Schedule generated but cache failed due to network issues.');
         }
       } catch (e) {

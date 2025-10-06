@@ -54,7 +54,14 @@ async function getTextbookSegments(): Promise<Array<{ sectionToken: string; titl
           ]);
           return textbooksSnap;
         } catch (err) {
-          console.warn(`[Scheduler] Firestore attempt ${i + 1} failed:`, err);
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          console.warn(`[Scheduler] Firestore attempt ${i + 1} failed:`, errorMsg);
+          
+          // Don't retry on certain errors
+          if (errorMsg.includes('permission') || errorMsg.includes('unauthorized')) {
+            throw err;
+          }
+          
           if (i === retries - 1) throw err;
           // Wait before retry (exponential backoff)
           await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
