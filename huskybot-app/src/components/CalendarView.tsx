@@ -181,13 +181,13 @@ export default function CalendarView() {
         autoPlanned: autoPlanned ? 'Yes' : 'No',
         planMessage: planMessage,
         aiPlanExists: aiPlan ? 'Yes' : 'No',
-        events: events.length,
+        // events: will be logged separately after events are computed
         extensionError: extError || null
       };
       
       console.log('[Calendar Debug Info]', debugInfo);
     }
-  }, [loading, networkStatus, authUid, extensionId, materialsMeta.length, course?.materials?.length, autoPlanned, planMessage, aiPlan, events.length, extError]);
+  }, [loading, networkStatus, authUid, extensionId, materialsMeta.length, course?.materials?.length, autoPlanned, planMessage, aiPlan, extError]);
 
   // Auto-plan when signed in and we have materials and haven't planned yet
   useEffect(() => {
@@ -319,6 +319,15 @@ export default function CalendarView() {
     }
     return map;
   }, [events]);
+
+  // Log events information separately after events are computed
+  useEffect(() => {
+    console.log('[Calendar Events Info]', {
+      eventsCount: events.length,
+      eventsByDay: Object.keys(eventsByDay).length,
+      totalDaysWithEvents: Object.keys(eventsByDay).filter(key => eventsByDay[key].length > 0).length
+    });
+  }, [events, eventsByDay]);
 
   const monthDays = useMemo(() => {
     if (mode !== 'month') return [] as Date[];
