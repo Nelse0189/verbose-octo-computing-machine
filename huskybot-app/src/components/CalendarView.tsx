@@ -98,6 +98,7 @@ export default function CalendarView() {
   const [authUid, setAuthUid] = useState<string | null>(null);
   const [activeSummary, setActiveSummary] = useState<{ eventId: string; summary: string; sources: { heading?: string | null; pageStart?: number | null; pageEnd?: number | null; storagePath?: string | null }[] } | null>(null);
   const [activePdf, setActivePdf] = useState<{ url: string; pageStart?: number | null; pageEnd?: number | null } | null>(null);
+  const [showPdfViewer, setShowPdfViewer] = useState<boolean>(false);
   const [isSummarizing, setIsSummarizing] = useState<boolean>(false);
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline' | 'slow'>('online');
 
@@ -644,32 +645,50 @@ Final Exam: December 15`
                     )}
 
                     {activeSummary?.eventId === e.id && (
-                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setActiveSummary(null)}>
-                        <div className="bg-white rounded-lg shadow-xl w-[95vw] h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-between p-4 border-b">
-                            <h2 className="text-lg font-semibold">Study Summary: {e.title}</h2>
-                            <button 
-                              onClick={() => setActiveSummary(null)}
-                              className="text-gray-500 hover:text-gray-700 text-xl font-bold"
-                            >×</button>
+                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => {
+                        setActiveSummary(null);
+                        setActivePdf(null);
+                        setShowPdfViewer(false);
+                      }}>
+                        <div className="bg-white rounded-lg shadow-xl w-[98vw] h-[96vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-between p-4 border-b bg-gray-50">
+                            <h2 className="text-xl font-semibold">Study Summary: {e.title}</h2>
+                            <div className="flex items-center gap-3">
+                              <button 
+                                onClick={() => setShowPdfViewer(!showPdfViewer)}
+                                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 text-sm font-medium"
+                              >
+                                {showPdfViewer ? '📖 Hide PDF' : '📖 Show PDF'}
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setActiveSummary(null);
+                                  setActivePdf(null);
+                                  setShowPdfViewer(false);
+                                }}
+                                className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+                              >×</button>
+                            </div>
                           </div>
                           
                           <div className="flex-1 flex overflow-hidden">
-                            <div className={`${activePdf?.url ? 'w-1/2' : 'w-full'} p-4 overflow-auto border-r`}>
-                              <div className="prose prose-sm max-w-none">
-                                <ReactMarkdown
-                                  remarkPlugins={[remarkGfm, remarkMath]}
-                                  rehypePlugins={[rehypeKatex]}
-                                >
-                                  {activeSummary.summary}
-                                </ReactMarkdown>
+                            <div className={`${showPdfViewer && activePdf?.url ? 'w-1/2' : 'w-full'} flex flex-col transition-all duration-300`}>
+                              <div className="flex-1 p-6 overflow-auto">
+                                <div className="prose prose-lg max-w-none">
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm, remarkMath]}
+                                    rehypePlugins={[rehypeKatex]}
+                                  >
+                                    {activeSummary.summary}
+                                  </ReactMarkdown>
+                                </div>
                               </div>
                               
-                              <div className="mt-6 pt-4 border-t">
-                                <div className="flex items-center justify-between mb-2">
-                                  <h3 className="font-semibold">Sources</h3>
+                              <div className="p-4 border-t bg-gray-50">
+                                <div className="flex items-center justify-between mb-3">
+                                  <h3 className="text-lg font-semibold">Sources</h3>
                                   <button
-                                    className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
+                                    className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 text-sm font-medium"
                                     onClick={async () => {
                                       if (!authUid) return;
                                       // Force regenerate by deleting cache and calling handleSummarize again
@@ -686,41 +705,47 @@ Final Exam: December 15`
                                       }
                                     }}
                                   >
-                                    Regenerate
+                                    🔄 Regenerate
                                   </button>
                                 </div>
-                                {activeSummary.sources.map((s, idx) => (
-                                  <div key={idx} className="mb-2 p-2 bg-gray-50 rounded">
-                                    <div className="font-medium">[S{idx+1}] {s.heading || 'Section'}</div>
-                                    <div className="text-sm text-gray-600">Pages {s.pageStart ?? '?'}–{s.pageEnd ?? '?'}</div>
-                                    {s.storagePath && (
-                                      <button
-                                        className="mt-1 px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
-                                        onClick={async () => {
-                                          try {
-                                            const url = await getSignedPdfUrl(s.storagePath!, 15, s.pageStart || undefined);
-                                            setActivePdf({ url, pageStart: s.pageStart, pageEnd: s.pageEnd });
-                                          } catch {
-                                            alert('Failed to open PDF source.');
-                                          }
-                                        }}
-                                      >View Pages {s.pageStart}–{s.pageEnd}</button>
-                                    )}
-                                  </div>
-                                ))}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-32 overflow-y-auto">
+                                  {activeSummary.sources.map((s, idx) => (
+                                    <div key={idx} className="p-3 bg-white rounded border">
+                                      <div className="font-medium text-sm">[S{idx+1}] {s.heading || 'Section'}</div>
+                                      <div className="text-xs text-gray-600 mb-2">Pages {s.pageStart ?? '?'}–{s.pageEnd ?? '?'}</div>
+                                      {s.storagePath && (
+                                        <button
+                                          className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
+                                          onClick={async () => {
+                                            try {
+                                              const url = await getSignedPdfUrl(s.storagePath!, 15, s.pageStart || undefined);
+                                              setActivePdf({ url, pageStart: s.pageStart, pageEnd: s.pageEnd });
+                                              setShowPdfViewer(true);
+                                            } catch {
+                                              alert('Failed to open PDF source.');
+                                            }
+                                          }}
+                                        >📄 View Pages {s.pageStart}–{s.pageEnd}</button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             </div>
                             
-                            {activePdf?.url && (
-                              <div className="w-1/2 flex flex-col">
-                                <div className="p-2 border-b bg-gray-50 flex items-center justify-between">
+                            {showPdfViewer && activePdf?.url && (
+                              <div className="w-1/2 flex flex-col border-l">
+                                <div className="p-3 border-b bg-gray-50 flex items-center justify-between">
                                   <span className="text-sm font-medium">
-                                    PDF Viewer {activePdf.pageStart && activePdf.pageEnd && `(Pages ${activePdf.pageStart}–${activePdf.pageEnd})`}
+                                    📖 PDF Viewer {activePdf.pageStart && activePdf.pageEnd && `(Pages ${activePdf.pageStart}–${activePdf.pageEnd})`}
                                   </span>
                                   <button 
-                                    onClick={() => setActivePdf(null)}
-                                    className="text-gray-500 hover:text-gray-700"
-                                  >Close PDF</button>
+                                    onClick={() => {
+                                      setActivePdf(null);
+                                      setShowPdfViewer(false);
+                                    }}
+                                    className="text-gray-500 hover:text-gray-700 font-bold"
+                                  >×</button>
                                 </div>
                                 <div className="flex-1 overflow-hidden">
                                   <PdfViewer 
