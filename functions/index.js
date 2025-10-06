@@ -938,62 +938,84 @@ exports.textbookTopicSummary = functions
         }
       }
 
-      // Hydrate contexts with page images by calling the renderer service
+      // Optimized PDF rendering with better limits and error handling
       const imageParts = [];
-      const renderPromises = contexts.map(async (c) => {
-        if (!c.storagePath || !c.pageStart || !c.pageEnd) return null;
-        try {
-          if (!pdfRendererEndpoint) throw new Error('PDF renderer endpoint is not configured');
-
-          // Add timeout to PDF rendering requests
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout
-
-          const rendererResponse = await fetch(`${pdfRendererEndpoint}/render-pages`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              gcsPath: `gs://${STORAGE_BUCKET}/${c.storagePath}`,
-              pageStart: c.pageStart,
-              pageEnd: c.pageEnd,
-            }),
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
-
-          if (!rendererResponse.ok) {
-            const errorBody = await rendererResponse.text();
-            throw new Error(`PDF renderer failed with status ${rendererResponse.status}: ${errorBody}`);
-          }
-
-          const { images } = await rendererResponse.json();
-          if (images && Array.isArray(images)) {
-            return images.map(img => ({
-              inlineData: {
-                mimeType: 'image/png',
-                data: img.base64,
-              },
-            }));
-          }
-          return [];
-        } catch (e) {
-          logger.error(`[textbookTopicSummary] Failed to render PDF pages for textbook ${c.textbookId}`, e);
-          return [];
+      
+      // Limit to first 2 contexts and max 6 pages total to prevent timeout
+      const limitedContexts = contexts.slice(0, 2);
+      let totalPages = 0;
+      const processableContexts = [];
+      
+      for (const ctx of limitedContexts) {
+        if (!ctx.pageStart || !ctx.pageEnd) continue;
+        const pageCount = ctx.pageEnd - ctx.pageStart + 1;
+        if (totalPages + pageCount <= 6) { // Max 6 pages total
+          processableContexts.push(ctx);
+          totalPages += pageCount;
         }
-      });
+      }
+      
+      logger.info(`[textbookTopicSummary] Processing ${processableContexts.length} contexts with ${totalPages} total pages`);
 
-      // Process all PDF rendering in parallel with timeout
-      try {
-        const renderResults = await Promise.allSettled(renderPromises);
-        renderResults.forEach(result => {
-          if (result.status === 'fulfilled' && result.value) {
-            imageParts.push(...result.value);
+      if (processableContexts.length > 0 && pdfRendererEndpoint) {
+        const renderPromises = processableContexts.map(async (c) => {
+          try {
+            // Shorter timeout for individual requests
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+            const rendererResponse = await fetch(`${pdfRendererEndpoint}/render-pages`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                gcsPath: `gs://${STORAGE_BUCKET}/${c.storagePath}`,
+                pageStart: c.pageStart,
+                pageEnd: c.pageEnd,
+              }),
+              signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!rendererResponse.ok) {
+              const errorBody = await rendererResponse.text();
+              throw new Error(`PDF renderer failed with status ${rendererResponse.status}: ${errorBody}`);
+            }
+
+            const { images } = await rendererResponse.json();
+            if (images && Array.isArray(images)) {
+              return images.map(img => ({
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: img.base64,
+                },
+              }));
+            }
+            return [];
+          } catch (e) {
+            logger.error(`[textbookTopicSummary] Failed to render PDF pages for textbook ${c.textbookId}`, e);
+            return [];
           }
         });
-        logger.info(`[textbookTopicSummary] Successfully rendered ${imageParts.length} page images`);
-      } catch (e) {
-        logger.error('[textbookTopicSummary] PDF rendering batch failed', e);
+
+        // Process with overall timeout
+        try {
+          const renderResults = await Promise.race([
+            Promise.allSettled(renderPromises),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('PDF rendering batch timeout after 60 seconds')), 60000)
+            )
+          ]);
+          
+          renderResults.forEach(result => {
+            if (result.status === 'fulfilled' && result.value) {
+              imageParts.push(...result.value);
+            }
+          });
+          logger.info(`[textbookTopicSummary] Successfully rendered ${imageParts.length} page images`);
+        } catch (e) {
+          logger.error('[textbookTopicSummary] PDF rendering batch failed', e);
+        }
       }
 
       // If still no segments found, try vector search as fallback (for legacy subchapters)
@@ -1075,17 +1097,77 @@ Return markdown without frontmatter.`;
         },
       };
 
-      // Add timeout to Gemini AI call
-      logger.info(`[textbookTopicSummary] Calling Gemini with ${imageParts.length} images`);
-      const result = await Promise.race([
-        geminiModel.generateContent(requestPayload),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Gemini AI timeout after 120 seconds')), 120000)
-        )
-      ]);
-      const text = await result.response.text();
-      logger.info(`[textbookTopicSummary] Gemini response received, length: ${text.length}`);
-      return res.status(200).send({ summary: text, sources: contexts.map((c, i) => ({ id: i + 1, heading: c.heading, pages: c.pages, pageStart: c.pageStart || null, pageEnd: c.pageEnd || null, textbookId: c.textbookId || null, storagePath: c.storagePath || null })) });
+      // Generate summary with or without images
+      let summaryText = '';
+      
+      if (imageParts.length > 0) {
+        // Full multimodal summary with images
+        logger.info(`[textbookTopicSummary] Calling Gemini with ${imageParts.length} images`);
+        try {
+          const result = await Promise.race([
+            geminiModel.generateContent(requestPayload),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Gemini AI timeout after 90 seconds')), 90000)
+            )
+          ]);
+          summaryText = await result.response.text();
+          logger.info(`[textbookTopicSummary] Multimodal Gemini response received, length: ${summaryText.length}`);
+        } catch (e) {
+          logger.warn('[textbookTopicSummary] Multimodal generation failed, falling back to text-only', e);
+          // Fall back to text-only if image processing fails
+          imageParts.length = 0; // Clear images for fallback
+        }
+      }
+      
+      if (!summaryText && contexts.length > 0) {
+        // Fallback: text-only summary
+        logger.info(`[textbookTopicSummary] Generating text-only summary for ${contexts.length} contexts`);
+        const textOnlyPrompt = `You are an expert study guide generator. Create a comprehensive study summary for the topic "${topic}" based on the textbook context provided.
+
+Include:
+- Key concepts and definitions
+- Important theorems or principles  
+- Relevant formulas in LaTeX format
+- Brief example outlines
+
+Topic: ${String(topic)}
+
+Textbook Context:
+${contextText}
+
+Generate a clear, well-structured markdown summary.`;
+
+        try {
+          const textResult = await Promise.race([
+            geminiModel.generateContent(textOnlyPrompt),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Text-only Gemini timeout after 60 seconds')), 60000)
+            )
+          ]);
+          summaryText = await textResult.response.text();
+          logger.info(`[textbookTopicSummary] Text-only Gemini response received, length: ${summaryText.length}`);
+        } catch (e) {
+          logger.error('[textbookTopicSummary] Both multimodal and text-only generation failed', e);
+          summaryText = `**Study Summary: ${topic}**\n\nI apologize, but I encountered technical difficulties generating a detailed summary. However, I found relevant textbook sections that cover this topic. Please refer to the sources below for the complete information.\n\n**Relevant Sections Found:**\n${contexts.map(c => `- ${c.heading} (Pages ${c.pages})`).join('\n')}`;
+        }
+      }
+      
+      if (!summaryText) {
+        summaryText = `**Study Summary: ${topic}**\n\nNo specific textbook content was found for this topic. This might be because:\n- The topic is not covered in the uploaded textbooks\n- The topic name doesn't match the textbook section titles\n- The textbook hasn't been fully processed yet\n\nTry rephrasing the topic or check if the relevant textbook has been uploaded.`;
+      }
+
+      return res.status(200).send({ 
+        summary: summaryText, 
+        sources: contexts.map((c, i) => ({ 
+          id: i + 1, 
+          heading: c.heading, 
+          pages: c.pages, 
+          pageStart: c.pageStart || null, 
+          pageEnd: c.pageEnd || null, 
+          textbookId: c.textbookId || null, 
+          storagePath: c.storagePath || null 
+        })) 
+      });
     } catch (e) {
       logger.error('[textbookTopicSummary] Failed', e);
       return res.status(500).send('Internal Server Error');
