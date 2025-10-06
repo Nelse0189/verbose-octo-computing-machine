@@ -348,52 +348,29 @@ export default function CalendarView() {
 
   return (
     <div className="w-full p-4 text-foreground">
-      <div className="flex items-center justify-between mb-3">
+      {/* Month/Period Title */}
+      <div className="text-center mb-4">
+        <h1 className="text-2xl font-semibold text-foreground">
+          {mode === 'month' && current.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          {mode === 'week' && `Week of ${startOfWeek(current).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+          {mode === 'day' && current.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+        </h1>
+      </div>
+
+      {/* Navigation and Mode Controls */}
+      <div className="flex items-center justify-between mb-4">
         <div className="flex gap-2">
-          <button 
-            className="flex items-center justify-center w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-full shadow-lg hover:from-blue-600 hover:to-blue-700 transform hover:scale-105 transition-all duration-200 font-bold"
-            onClick={() => setCurrent(addDays(current, mode === 'day' ? -1 : mode === 'week' ? -7 : -30))}
-          >
-            ←
+          <button className="modern-button" onClick={() => setCurrent(addDays(current, mode === 'day' ? -1 : mode === 'week' ? -7 : -30))}>
+            ← Previous
           </button>
-          <button 
-            className="flex items-center justify-center w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-full shadow-lg hover:from-blue-600 hover:to-blue-700 transform hover:scale-105 transition-all duration-200 font-bold"
-            onClick={() => setCurrent(addDays(current, mode === 'day' ? 1 : mode === 'week' ? 7 : 30))}
-          >
-            →
+          <button className="modern-button" onClick={() => setCurrent(addDays(current, mode === 'day' ? 1 : mode === 'week' ? 7 : 30))}>
+            Next →
           </button>
         </div>
         <div className="flex gap-2">
-          <button 
-            className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-              mode === 'month' 
-                ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg transform scale-105' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:shadow-md'
-            }`} 
-            onClick={() => setMode('month')}
-          >
-            📅 Month
-          </button>
-          <button 
-            className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-              mode === 'week' 
-                ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg transform scale-105' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:shadow-md'
-            }`} 
-            onClick={() => setMode('week')}
-          >
-            📊 Week
-          </button>
-          <button 
-            className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-              mode === 'day' 
-                ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg transform scale-105' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:shadow-md'
-            }`} 
-            onClick={() => setMode('day')}
-          >
-            📋 Day
-          </button>
+          <button className={`modern-button ${mode==='month'?'bg-accent text-accent-foreground':''}`} onClick={() => setMode('month')}>Month</button>
+          <button className={`modern-button ${mode==='week'?'bg-accent text-accent-foreground':''}`} onClick={() => setMode('week')}>Week</button>
+          <button className={`modern-button ${mode==='day'?'bg-accent text-accent-foreground':''}`} onClick={() => setMode('day')}>Day</button>
         </div>
       </div>
 
@@ -414,7 +391,7 @@ export default function CalendarView() {
           
           {/* Manual test generation button */}
           <button 
-            className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold shadow-lg hover:from-green-600 hover:to-green-700 transform hover:scale-105 transition-all duration-200 flex items-center gap-2" 
+            className="modern-button bg-blue-500 text-white" 
             onClick={async () => {
               try {
                 setIsPlanning(true);
@@ -549,12 +526,7 @@ Final Exam: December 15`
             <div className="p-3 rounded border w-full max-w-4xl mx-auto">
               <div className="text-sm font-semibold mb-2">{new Date(current).toLocaleDateString(undefined, { weekday:'long', month:'long', day:'numeric' })}</div>
               <div className="mb-3">
-                <button 
-                  className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg font-medium shadow-md hover:from-indigo-600 hover:to-indigo-700 transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
-                  onClick={() => setMode('month')}
-                >
-                  ← Back to Month
-                </button>
+                <button className="modern-button" onClick={() => setMode('month')}>← Back to Month</button>
               </div>
               {(eventsByDay[dayKey] || []).map(e => {
                 // If this event came from an AI plan, enrich with details
@@ -686,31 +658,15 @@ Final Exam: December 15`
                         {aiItem.sourceLink && (
                           <a className="ml-2 underline" href={aiItem.sourceLink} target="_blank" rel="noreferrer">source</a>
                         )}
-                        <button 
-                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
-                            isSummarizing 
-                              ? 'bg-gradient-to-r from-orange-400 to-orange-500 text-white cursor-not-allowed' 
-                              : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md hover:from-emerald-600 hover:to-emerald-700 transform hover:scale-105'
-                          }`}
-                          onClick={handleSummarize} 
-                          disabled={isSummarizing}
-                        >
-                          {isSummarizing ? '🤖 Analyzing textbook pages...' : '📚 Study Summary'}
+                        <button className="modern-button" onClick={handleSummarize} disabled={isSummarizing}>
+                          {isSummarizing ? '🤖 Analyzing...' : '📚 Study Summary'}
                         </button>
                       </div>
                     )}
                     {!aiItem && (
                       <div className="mt-1 text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-                        <button 
-                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
-                            isSummarizing 
-                              ? 'bg-gradient-to-r from-orange-400 to-orange-500 text-white cursor-not-allowed' 
-                              : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md hover:from-emerald-600 hover:to-emerald-700 transform hover:scale-105'
-                          }`}
-                          onClick={handleSummarize} 
-                          disabled={isSummarizing}
-                        >
-                          {isSummarizing ? '🤖 Analyzing textbook pages...' : '📚 Study Summary'}
+                        <button className="modern-button" onClick={handleSummarize} disabled={isSummarizing}>
+                          {isSummarizing ? '🤖 Analyzing...' : '📚 Study Summary'}
                         </button>
                       </div>
                     )}
@@ -727,9 +683,9 @@ Final Exam: December 15`
                             <div className="flex items-center gap-3">
                               <button 
                                 onClick={() => setShowPdfViewer(!showPdfViewer)}
-                                className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl font-semibold shadow-lg hover:from-teal-600 hover:to-teal-700 transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 text-sm font-medium"
                               >
-                                {showPdfViewer ? '👁️ Hide PDF' : '📖 Show PDF'}
+                                {showPdfViewer ? '📖 Hide PDF' : '📖 Show PDF'}
                               </button>
                               <button 
                                 onClick={() => {
@@ -737,7 +693,7 @@ Final Exam: December 15`
                                   setActivePdf(null);
                                   setShowPdfViewer(false);
                                 }}
-                                className="flex items-center justify-center w-10 h-10 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-full shadow-lg hover:from-red-600 hover:to-red-700 transform hover:scale-110 transition-all duration-200 font-bold text-lg"
+                                className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
                               >×</button>
                             </div>
                           </div>
@@ -759,7 +715,7 @@ Final Exam: December 15`
                                 <div className="flex items-center justify-between mb-3">
                                   <h3 className="text-lg font-semibold">Sources</h3>
                                   <button
-                                    className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl font-semibold shadow-lg hover:from-amber-600 hover:to-amber-700 transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                                    className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 text-sm font-medium"
                                     onClick={async () => {
                                       if (!authUid) return;
                                       // Force regenerate by deleting cache and calling handleSummarize again
@@ -786,7 +742,7 @@ Final Exam: December 15`
                                       <div className="text-xs text-gray-600 mb-2">Pages {s.pageStart ?? '?'}–{s.pageEnd ?? '?'}</div>
                                       {s.storagePath && (
                                         <button
-                                          className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg text-xs font-medium shadow-md hover:from-blue-600 hover:to-blue-700 transform hover:scale-105 transition-all duration-200 flex items-center gap-1"
+                                          className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
                                           onClick={async () => {
                                             try {
                                               const url = await getSignedPdfUrl(s.storagePath!, 15, s.pageStart || undefined);
@@ -815,7 +771,7 @@ Final Exam: December 15`
                                       setActivePdf(null);
                                       setShowPdfViewer(false);
                                     }}
-                                    className="flex items-center justify-center w-8 h-8 bg-gradient-to-r from-gray-400 to-gray-500 text-white rounded-full shadow-md hover:from-gray-500 hover:to-gray-600 transform hover:scale-110 transition-all duration-200 font-bold text-sm"
+                                    className="text-gray-500 hover:text-gray-700 font-bold"
                                   >×</button>
                                 </div>
                                 <div className="flex-1 overflow-hidden">

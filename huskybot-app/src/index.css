@@ -179,60 +179,37 @@ code {
 .modern-input:hover:not(:focus) { border-color: var(--ring); background: var(--accent); transform: translateY(-0.5px); box-shadow: 0 4px 15px hsla(var(--ring) / 0.1); }
 .modern-input:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
-/* Modern glassmorphic button styles with mixed accents */
+/* Minimal button styles */
 .modern-button {
-  width: 100%;
-  padding: 14px 28px;
-  border-radius: 10px;
-  border: 2px solid var(--primary-foreground);
-  background: var(--primary);
-  backdrop-filter: blur(15px);
-  color: var(--primary-foreground);
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   outline: none;
   position: relative;
-  overflow: hidden;
-}
-
-.modern-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-  transition: left 0.5s ease;
+  width: auto;
+  min-width: auto;
 }
 
 .modern-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--uconn-red), var(--primary));
-  border-color: var(--uconn-red);
-  transform: translateY(-2px);
-  box-shadow: 
-    0 8px 25px rgba(228, 0, 43, 0.4),
-    0 4px 15px rgba(0, 102, 204, 0.2);
-}
-
-.modern-button:hover:not(:disabled)::before {
-  left: 100%;
+  background: var(--accent);
+  border-color: var(--ring);
+  color: var(--accent-foreground);
 }
 
 .modern-button:active:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 
-    0 4px 15px rgba(228, 0, 43, 0.3),
-    0 2px 8px rgba(0, 102, 204, 0.2);
+  background: var(--muted);
+  transform: scale(0.98);
 }
 
 .modern-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  transform: none;
   background: var(--muted);
   border-color: var(--border);
 }
