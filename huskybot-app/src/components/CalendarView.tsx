@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { getCourseMaterials, CourseData, CourseMaterial } from '../lib/idb';
 import { generateScheduleFromDocs, mergePlans, SchedulePlan, reconcileScheduleWithDocs, computeDocsHash } from '../lib/scheduler';
 import PdfViewer from './PdfViewer';
-import { summarizeTopicWithTextbook, getSignedPdfUrl, TopicSummaryResponse } from '../lib/textbookRetrieval';
+import FlashcardViewer from './FlashcardViewer';
+import { summarizeTopicWithTextbook, getSignedPdfUrl, TopicSummaryResponse, generateFlashcardsWithTextbook, FlashcardResponse } from '../lib/textbookRetrieval';
 import { db } from '../firebase/config';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -100,6 +101,8 @@ export default function CalendarView() {
   const [activePdf, setActivePdf] = useState<{ url: string; pageStart?: number | null; pageEnd?: number | null } | null>(null);
   const [showPdfViewer, setShowPdfViewer] = useState<boolean>(false);
   const [isSummarizing, setIsSummarizing] = useState<boolean>(false);
+  const [activeFlashcards, setActiveFlashcards] = useState<{ eventId: string; flashcards: any[]; sources: { heading?: string | null; pageStart?: number | null; pageEnd?: number | null; storagePath?: string | null }[] } | null>(null);
+  const [isGeneratingFlashcards, setIsGeneratingFlashcards] = useState<boolean>(false);
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline' | 'slow'>('online');
 
   useEffect(() => {
@@ -629,6 +632,70 @@ Final Exam: December 15`
                     setIsSummarizing(false);
                   }
                 };
+
+                const handleGenerateFlashcards = async () => {
+                  if (!authUid) return;
+                  setIsGeneratingFlashcards(true);
+                  
+                  try {
+                    // Check cache first
+                    const cacheKey = `${formatDateKey(e.date)}__${e.id}`;
+                    const cacheRef = doc(db, 'schedules', authUid, 'flashcards', cacheKey);
+                    
+                    try {
+                      const cachedSnap = await getDoc(cacheRef);
+                      if (cachedSnap.exists()) {
+                        const cached = cachedSnap.data();
+                        console.log('[Calendar] Using cached flashcards');
+                        setActiveFlashcards({
+                          eventId: e.id,
+                          flashcards: cached.flashcards || [],
+                          sources: cached.sources || []
+                        });
+                        return;
+                      }
+                    } catch (cacheErr) {
+                      console.warn('[Calendar] Cache read failed, generating new flashcards:', cacheErr);
+                    }
+
+                    // Generate new flashcards if not cached
+                    console.log('[Calendar] Generating new flashcards');
+                    const resp: FlashcardResponse = await generateFlashcardsWithTextbook(e.title);
+                    const flashcardData = {
+                      eventId: e.id,
+                      flashcards: resp.flashcards,
+                      sources: resp.sources.map(s => ({ 
+                        heading: s.heading, 
+                        pageStart: s.pageStart || null, 
+                        pageEnd: s.pageEnd || null, 
+                        storagePath: s.storagePath || null 
+                      }))
+                    };
+                    
+                    setActiveFlashcards(flashcardData);
+                    
+                    // Save to cache
+                    try {
+                      await setDoc(cacheRef, {
+                        ...flashcardData,
+                        eventTitle: e.title,
+                        eventDate: formatDateKey(e.date),
+                        generatedAt: new Date().toISOString(),
+                        cachedAt: new Date().toISOString()
+                      });
+                      console.log('[Calendar] Flashcards cached successfully');
+                    } catch (saveErr) {
+                      console.warn('[Calendar] Failed to cache flashcards:', saveErr);
+                    }
+                    
+                  } catch (err) {
+                    console.warn('[Calendar] Generate flashcards failed', err);
+                    alert('Failed to generate flashcards.');
+                  } finally {
+                    setIsGeneratingFlashcards(false);
+                  }
+                };
+
                 return (
                   <div key={e.id} className="mb-2 p-2 rounded border bg-card/40">
                     <div className="text-sm font-medium">
@@ -661,12 +728,18 @@ Final Exam: December 15`
                         <button className="modern-button" onClick={handleSummarize} disabled={isSummarizing}>
                           {isSummarizing ? '🤖 Analyzing...' : '📚 Study Summary'}
                         </button>
+                        <button className="modern-button" onClick={handleGenerateFlashcards} disabled={isGeneratingFlashcards}>
+                          {isGeneratingFlashcards ? '🤖 Creating...' : '🃏 Flashcards'}
+                        </button>
                       </div>
                     )}
                     {!aiItem && (
                       <div className="mt-1 text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                         <button className="modern-button" onClick={handleSummarize} disabled={isSummarizing}>
                           {isSummarizing ? '🤖 Analyzing...' : '📚 Study Summary'}
+                        </button>
+                        <button className="modern-button" onClick={handleGenerateFlashcards} disabled={isGeneratingFlashcards}>
+                          {isGeneratingFlashcards ? '🤖 Creating...' : '🃏 Flashcards'}
                         </button>
                       </div>
                     )}
@@ -784,6 +857,20 @@ Final Exam: December 15`
                               </div>
                             )}
                           </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Flashcard Modal */}
+                    {activeFlashcards?.eventId === e.id && (
+                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => {
+                        setActiveFlashcards(null);
+                      }}>
+                        <div className="bg-white rounded-lg shadow-xl w-[98vw] h-[96vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                          <FlashcardViewer 
+                            flashcards={activeFlashcards.flashcards} 
+                            onClose={() => setActiveFlashcards(null)}
+                          />
                         </div>
                       </div>
                     )}

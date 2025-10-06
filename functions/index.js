@@ -1175,6 +1175,327 @@ Generate a clear, well-structured markdown summary.`;
   });
 });
 
+exports.textbookFlashcards = functions
+  .runWith({ timeoutSeconds: 300, memory: '1GB' })
+  .https.onRequest((req, res) => {
+  cors(req, res, async () => {
+    try {
+      initializeClients();
+      if (!clientsInitialized) throw new Error('Clients not initialized');
+
+      const { topic, namespace, limit, textbookId: forcedTextbookId } = req.body || {};
+      if (!topic) return res.status(400).send('Missing topic');
+
+      // Extract section tokens from topic (e.g., "1.9", "2.3.1")
+      const sectionTokens = [];
+      const matches = String(topic).match(/\b\d+(?:\.\d+)*\b/g);
+      if (matches) sectionTokens.push(...matches);
+
+      // Find relevant textbook segments (same logic as textbookTopicSummary)
+      async function findRelevantSegments(topic, textbookId) {
+        const db = admin.firestore();
+        const contexts = [];
+
+        if (sectionTokens.length > 0) {
+          let query = db.collection('textbooks');
+          if (textbookId) query = query.where('__name__', '==', textbookId);
+          const snapshots = await query.get();
+          for (const snap of snapshots.docs) {
+            const data = snap.data() || {};
+            const storagePath = data.storagePath;
+            const segments = data.segments || [];
+
+            for (const segment of segments) {
+              if (sectionTokens.some(token => segment.sectionToken === token)) {
+                contexts.push({
+                  textbookId: snap.id,
+                  storagePath,
+                  heading: segment.title,
+                  pages: `${segment.pageStart}-${segment.pageEnd}`,
+                  pageStart: segment.pageStart,
+                  pageEnd: segment.pageEnd,
+                  sectionToken: segment.sectionToken,
+                  kind: segment.kind
+                });
+              }
+            }
+          }
+          return contexts.sort((a, b) => a.pageStart - b.pageStart);
+        }
+
+        // Fallback: fuzzy match by title
+        try {
+          const norm = (s) => String(s || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9\.\s]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          const topicNorm = norm(topic);
+          const topicWords = new Set(topicNorm.split(' ').filter(w => w.length > 2 && isNaN(Number(w))));
+
+          let query2 = admin.firestore().collection('textbooks');
+          if (forcedTextbookId) query2 = query2.where('__name__', '==', forcedTextbookId);
+          const snaps = await query2.get();
+          const candidates = [];
+          snaps.forEach(doc => {
+            const data2 = doc.data() || {};
+            const storagePath2 = data2.storagePath;
+            const segments2 = Array.isArray(data2.segments) ? data2.segments : [];
+            for (const seg of segments2) {
+              const segTitle = norm(seg.title);
+              const segWords = new Set(segTitle.split(' ').filter(w => w.length > 2 && isNaN(Number(w))));
+              let overlap = 0;
+              for (const w of segWords) if (topicWords.has(w)) overlap++;
+              if (seg.sectionToken && topic.toLowerCase().includes(String(seg.sectionToken).toLowerCase())) overlap += 2;
+              if (overlap > 0) {
+                candidates.push({
+                  score: overlap,
+                  textbookId: doc.id,
+                  storagePath: storagePath2,
+                  heading: seg.title,
+                  pageStart: seg.pageStart,
+                  pageEnd: seg.pageEnd,
+                  sectionToken: seg.sectionToken,
+                  kind: seg.kind,
+                });
+              }
+            }
+          });
+          candidates.sort((a,b) => b.score - a.score);
+          const top = candidates.slice(0, 2);
+          if (top.length > 0) {
+            contexts = top.map(c => ({
+              textbookId: c.textbookId,
+              storagePath: c.storagePath,
+              heading: c.heading,
+              pages: (c.pageStart && c.pageEnd) ? `${c.pageStart}-${c.pageEnd}` : null,
+              pageStart: c.pageStart,
+              pageEnd: c.pageEnd,
+              sectionToken: c.sectionToken,
+              kind: c.kind,
+            }));
+            logger.info('[textbookFlashcards] Fuzzy-matched segments by title overlap', { count: contexts.length });
+          }
+        } catch (e) {
+          logger.warn('[textbookFlashcards] Fuzzy segment match failed', e);
+        }
+
+        return contexts;
+      }
+
+      const contexts = await findRelevantSegments(topic, forcedTextbookId);
+
+      // Optimized PDF rendering (same as textbookTopicSummary)
+      const imageParts = [];
+      const limitedContexts = contexts.slice(0, 2);
+      let totalPages = 0;
+      const processableContexts = [];
+      
+      for (const ctx of limitedContexts) {
+        if (!ctx.pageStart || !ctx.pageEnd) continue;
+        const pageCount = ctx.pageEnd - ctx.pageStart + 1;
+        if (totalPages + pageCount <= 6) {
+          processableContexts.push(ctx);
+          totalPages += pageCount;
+        }
+      }
+      
+      logger.info(`[textbookFlashcards] Processing ${processableContexts.length} contexts with ${totalPages} total pages`);
+
+      if (processableContexts.length > 0 && pdfRendererEndpoint) {
+        const renderPromises = processableContexts.map(async (c) => {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+            const rendererResponse = await fetch(`${pdfRendererEndpoint}/render-pages`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                gcsPath: `gs://${STORAGE_BUCKET}/${c.storagePath}`,
+                pageStart: c.pageStart,
+                pageEnd: c.pageEnd,
+              }),
+              signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!rendererResponse.ok) {
+              const errorBody = await rendererResponse.text();
+              throw new Error(`PDF renderer failed with status ${rendererResponse.status}: ${errorBody}`);
+            }
+
+            const { images } = await rendererResponse.json();
+            if (images && Array.isArray(images)) {
+              return images.map(img => ({
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: img.base64,
+                },
+              }));
+            }
+            return [];
+          } catch (e) {
+            logger.error(`[textbookFlashcards] Failed to render PDF pages for textbook ${c.textbookId}`, e);
+            return [];
+          }
+        });
+
+        try {
+          const renderResults = await Promise.race([
+            Promise.allSettled(renderPromises),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('PDF rendering batch timeout after 60 seconds')), 60000)
+            )
+          ]);
+          
+          renderResults.forEach(result => {
+            if (result.status === 'fulfilled' && result.value) {
+              imageParts.push(...result.value);
+            }
+          });
+          logger.info(`[textbookFlashcards] Successfully rendered ${imageParts.length} page images`);
+        } catch (e) {
+          logger.error('[textbookFlashcards] PDF rendering batch failed', e);
+        }
+      }
+
+      // Generate flashcards with AI
+      const contextText = contexts.map(c => `[${c.heading}] (Pages ${c.pages})`).join('\n');
+      
+      const prompt = `You are an expert educator creating study flashcards. Based on the textbook content provided, create 8-12 high-quality flashcards for the topic "${topic}".
+
+Each flashcard should have:
+- A clear, specific question
+- A comprehensive but concise answer
+- Appropriate difficulty level (easy/medium/hard)
+
+Focus on:
+- Key concepts and definitions
+- Important formulas and their applications
+- Problem-solving techniques
+- Theoretical understanding
+- Practical applications
+
+Return a JSON array of flashcards in this exact format:
+[
+  {
+    "id": "1",
+    "question": "What is...",
+    "answer": "...",
+    "difficulty": "easy"
+  }
+]
+
+Topic: ${String(topic)}
+
+Reference Information:
+${contextText}
+
+Return only the JSON array, no additional text.`;
+
+      const requestPayload = {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: prompt },
+              ...imageParts,
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          topP: 0.95,
+          topK: 40,
+          maxOutputTokens: 2048,
+          responseMimeType: 'application/json',
+        },
+      };
+
+      // Generate flashcards with timeout
+      let flashcardsText = '';
+      
+      if (imageParts.length > 0) {
+        logger.info(`[textbookFlashcards] Calling Gemini with ${imageParts.length} images`);
+        try {
+          const result = await Promise.race([
+            geminiModel.generateContent(requestPayload),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Gemini AI timeout after 90 seconds')), 90000)
+            )
+          ]);
+          flashcardsText = await result.response.text();
+          logger.info(`[textbookFlashcards] Multimodal Gemini response received, length: ${flashcardsText.length}`);
+        } catch (e) {
+          logger.warn('[textbookFlashcards] Multimodal generation failed, falling back to text-only', e);
+          imageParts.length = 0;
+        }
+      }
+      
+      if (!flashcardsText && contexts.length > 0) {
+        logger.info(`[textbookFlashcards] Generating text-only flashcards for ${contexts.length} contexts`);
+        const textOnlyPrompt = `Create 8-12 study flashcards for "${topic}" based on the textbook context provided.
+
+Return a JSON array of flashcards:
+[{"id": "1", "question": "...", "answer": "...", "difficulty": "easy/medium/hard"}]
+
+Topic: ${String(topic)}
+Context: ${contextText}
+
+Return only the JSON array.`;
+
+        try {
+          const textResult = await Promise.race([
+            geminiModel.generateContent(textOnlyPrompt),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Text-only Gemini timeout after 60 seconds')), 60000)
+            )
+          ]);
+          flashcardsText = await textResult.response.text();
+          logger.info(`[textbookFlashcards] Text-only Gemini response received, length: ${flashcardsText.length}`);
+        } catch (e) {
+          logger.error('[textbookFlashcards] Both multimodal and text-only generation failed', e);
+          flashcardsText = '[]';
+        }
+      }
+      
+      if (!flashcardsText) {
+        flashcardsText = '[]';
+      }
+
+      // Parse flashcards
+      let flashcards = [];
+      try {
+        flashcards = JSON.parse(flashcardsText);
+        if (!Array.isArray(flashcards)) {
+          flashcards = [];
+        }
+      } catch (parseErr) {
+        logger.error('[textbookFlashcards] Failed to parse flashcards JSON', parseErr);
+        flashcards = [];
+      }
+
+      return res.status(200).send({ 
+        flashcards, 
+        sources: contexts.map((c, i) => ({ 
+          id: i + 1, 
+          heading: c.heading, 
+          pages: c.pages, 
+          pageStart: c.pageStart || null, 
+          pageEnd: c.pageEnd || null, 
+          textbookId: c.textbookId || null, 
+          storagePath: c.storagePath || null 
+        })) 
+      });
+    } catch (e) {
+      logger.error('[textbookFlashcards] Failed', e);
+      return res.status(500).send('Internal Server Error');
+    }
+  });
+});
+
 exports.retrieveRelevant = functions
   .runWith({ timeoutSeconds: 120, memory: '512MB' })
   .https.onRequest((req, res) => {

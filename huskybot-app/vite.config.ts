@@ -33,6 +33,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/textbookTopicSummary/, "/textbookTopicSummary"),
       },
+      "/textbookFlashcards": {
+        target: process.env.VITE_PROXY_TARGET || "https://us-central1-huskybot-dabab.cloudfunctions.net",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/textbookFlashcards/, "/textbookFlashcards"),
+      },
       "/retrieveRelevant": {
         target: process.env.VITE_PROXY_TARGET || "https://us-central1-huskybot-dabab.cloudfunctions.net",
         changeOrigin: true,
