@@ -168,6 +168,27 @@ export default function CalendarView() {
     };
   }, []);
 
+  // Log debug information to console
+  useEffect(() => {
+    if (!loading) {
+      const debugInfo = {
+        network: networkStatus === 'online' ? '🟢 Online' : networkStatus === 'slow' ? '🟡 Slow' : '🔴 Offline',
+        signedIn: authUid ? '✅ Yes' : '❌ No',
+        extensionId: extensionId || 'None',
+        materialsFound: materialsMeta.length,
+        pdfMaterials: materialsMeta.filter(m => m.hasFile && String(m.mimeType||'').toLowerCase().includes('pdf')).length,
+        courseMaterials: course?.materials?.length || 0,
+        autoPlanned: autoPlanned ? 'Yes' : 'No',
+        planMessage: planMessage,
+        aiPlanExists: aiPlan ? 'Yes' : 'No',
+        events: events.length,
+        extensionError: extError || null
+      };
+      
+      console.log('[Calendar Debug Info]', debugInfo);
+    }
+  }, [loading, networkStatus, authUid, extensionId, materialsMeta.length, course?.materials?.length, autoPlanned, planMessage, aiPlan, events.length, extError]);
+
   // Auto-plan when signed in and we have materials and haven't planned yet
   useEffect(() => {
     (async () => {
@@ -411,23 +432,6 @@ Final Exam: December 15`
 
       {loading && <div>Loading saved materials…</div>}
       
-      {/* Debug Information */}
-      {!loading && (
-        <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
-          <div><strong>Debug Info:</strong></div>
-          <div>• Network: {networkStatus === 'online' ? '🟢 Online' : networkStatus === 'slow' ? '🟡 Slow' : '🔴 Offline'}</div>
-          <div>• Signed in: {authUid ? '✅ Yes' : '❌ No'}</div>
-          <div>• Extension ID: {extensionId || 'None'}</div>
-          <div>• Materials found: {materialsMeta.length}</div>
-          <div>• PDF materials: {materialsMeta.filter(m => m.hasFile && String(m.mimeType||'').toLowerCase().includes('pdf')).length}</div>
-          <div>• Course materials: {course?.materials?.length || 0}</div>
-          <div>• Auto-planned: {autoPlanned ? 'Yes' : 'No'}</div>
-          <div>• Plan message: {planMessage}</div>
-          <div>• AI Plan exists: {aiPlan ? 'Yes' : 'No'}</div>
-          <div>• Events: {events.length}</div>
-          {extError && <div>• Extension error: {extError}</div>}
-        </div>
-      )}
 
       {networkStatus !== 'online' && (
         <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 rounded text-sm">
